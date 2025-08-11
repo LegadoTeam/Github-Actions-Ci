@@ -37,50 +37,45 @@ jobs:
           restore-keys: |
             cygwin-${{ runner.os }}-
 
-      # 4. 安装 VS 2022
+      # 4. 安装 VS 2022（NativeDesktop 工作负载）
       - name: Install Visual Studio 2022
-        uses: microsoft/setup-vs@v1
-        with:
-          vs-version: '17.0'
-          components: Microsoft.VisualStudio.Component.VC.Tools.x86.x64
+        run: |
+          choco install visualstudio2022community --package-parameters "--add Microsoft.VisualStudio.Workload.NativeDesktop --includeRecommended --passive --locale en-US" -y
+          choco install visualstudio2022buildtools --package-parameters "--includeRecommended --passive --locale en-US" -y
 
-      # 5. 配置 MSBuild
-      - name: Setup MSBuild
-        uses: microsoft/setup-msbuild@v2
-
-      # 6. 安装 CMake
+      # 5. 安装最新 CMake
       - name: Install CMake
         uses: jwlawson/actions-setup-cmake@v1
         with:
           cmake-version: 'latest'
 
-      # 7. 安装 Cygwin（如果缓存中没有则安装）
+      # 6. 安装 Cygwin（如果缓存中没有则安装）
       - name: Install Cygwin
         if: steps.cache-cygwin.outputs.cache-hit != 'true'
         run: |
           choco install cygwin --no-progress -y
           choco install cygwin-basic --no-progress -y
 
-      # 8. 执行 setupcmakewin.sh
+      # 7. 执行 setupcmakewin.sh
       - name: Run setupcmakewin.sh
         shell: bash
         run: |
           chmod +x ./setupcmakewin.sh
           ./setupcmakewin.sh
 
-      # 9. 执行 buildcmake.sh
+      # 8. 执行 buildcmake.sh
       - name: Run buildcmake.sh
         shell: bash
         run: |
           chmod +x ./buildcmake.sh
           ./buildcmake.sh
 
-      # 10. 压缩产物
+      # 9. 压缩产物
       - name: Compress Release folder
         run: |
           powershell Compress-Archive -Path build/SonoBus_artefacts/Release/* -DestinationPath SonoBus_Windows.zip
 
-      # 11. 发布 Release
+      # 10. 发布 Release
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
