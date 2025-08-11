@@ -1,0 +1,57 @@
+name: Build SonoBus Windows
+
+on:
+  workflow_dispatch: # 手动触发
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout SonoBus repo with TOKEN_MGZ
+        uses: actions/checkout@v4
+        with:
+          repository: mgz0227/sonobus
+          token: ${{ secrets.TOKEN_MGZ }}
+          fetch-depth: 0
+
+      - name: Install Visual Studio 2022
+        uses: microsoft/setup-msbuild@v2
+        with:
+          vs-version: '2022'
+
+      - name: Install CMake
+        uses: jwlawson/actions-setup-cmake@v1
+        with:
+          cmake-version: 'latest'
+
+      - name: Install Cygwin
+        run: |
+          choco install cygwin --no-progress -y
+          choco install cygwin-basic --no-progress -y
+
+      - name: Run setupcmakewin.sh
+        shell: bash
+        run: |
+          chmod +x ./setupcmakewin.sh
+          ./setupcmakewin.sh
+
+      - name: Run buildcmake.sh
+        shell: bash
+        run: |
+          chmod +x ./buildcmake.sh
+          ./buildcmake.sh
+
+      - name: Compress Release folder
+        run: |
+          powershell Compress-Archive -Path build/SonoBus_artefacts/Release/* -DestinationPath SonoBus_Windows.zip
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: SonoBus_Windows.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.TOKEN_MGZ }}
