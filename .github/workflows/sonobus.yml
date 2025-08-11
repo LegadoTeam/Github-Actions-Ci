@@ -3,14 +3,15 @@ name: Build SonoBus Windows
 on:
   workflow_dispatch: # 手动触发
   push:
-    branches:
-      - main
+    tags:
+      - 'v*' # 推送 tag 会自动发布
 
 jobs:
   build:
     runs-on: windows-latest
 
     steps:
+      # 1. 拉取私有仓库
       - name: Checkout SonoBus repo with TOKEN_MGZ
         uses: actions/checkout@v4
         with:
@@ -18,40 +19,73 @@ jobs:
           token: ${{ secrets.TOKEN_MGZ }}
           fetch-depth: 0
 
-      - name: Install Visual Studio 2022
-        uses: microsoft/setup-msbuild@v2
+      # 2. 缓存 CMake 构建目录
+      - name: Cache CMake build
+        uses: actions/cache@v4
         with:
-          vs-version: '2022'
+          path: build
+          key: cmake-build-${{ runner.os }}-${{ hashFiles('**/CMakeLists.txt') }}
+          restore-keys: |
+            cmake-build-${{ runner.os }}-
 
+      # 3. 缓存 Cygwin
+      - name: Cache Cygwin
+        uses: actions/cache@v4
+        with:
+          path: C:\tools\cygwin
+          key: cygwin-${{ runner.os }}-v1
+          restore-keys: |
+            cygwin-${{ runner.os }}-
+
+      # 4. 安装 VS 2022
+      - name: Install Visual Studio 2022
+        uses: microsoft/setup-vs@v1
+        with:
+          vs-version: '17.0'
+          components: Microsoft.VisualStudio.Component.VC.Tools.x86.x64
+
+      # 5. 配置 MSBuild
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      # 6. 安装 CMake
       - name: Install CMake
         uses: jwlawson/actions-setup-cmake@v1
         with:
           cmake-version: 'latest'
 
+      # 7. 安装 Cygwin（如果缓存中没有则安装）
       - name: Install Cygwin
+        if: steps.cache-cygwin.outputs.cache-hit != 'true'
         run: |
           choco install cygwin --no-progress -y
           choco install cygwin-basic --no-progress -y
 
+      # 8. 执行 setupcmakewin.sh
       - name: Run setupcmakewin.sh
         shell: bash
         run: |
           chmod +x ./setupcmakewin.sh
           ./setupcmakewin.sh
 
+      # 9. 执行 buildcmake.sh
       - name: Run buildcmake.sh
         shell: bash
         run: |
           chmod +x ./buildcmake.sh
           ./buildcmake.sh
 
+      # 10. 压缩产物
       - name: Compress Release folder
         run: |
           powershell Compress-Archive -Path build/SonoBus_artefacts/Release/* -DestinationPath SonoBus_Windows.zip
 
+      # 11. 发布 Release
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
           files: SonoBus_Windows.zip
+          tag_name: ${{ github.ref_name || format('manual-{0}', github.run_number) }}
+          name: Release ${{ github.ref_name || format('manual-{0}', github.run_number) }}
         env:
           GITHUB_TOKEN: ${{ secrets.TOKEN_MGZ }}
