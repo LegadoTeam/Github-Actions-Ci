@@ -51,10 +51,11 @@ jobs:
 
       # 6. 安装 Cygwin（如果缓存中没有则安装）
       - name: Install Cygwin
-        if: steps.cache-cygwin.outputs.cache-hit != 'true'
         run: |
-          choco install cygwin --no-progress -y
-          choco install cygwin-basic --no-progress -y
+            choco install cygwin --no-progress -y
+            # 安装常用构建工具
+            C:\tools\cygwin\setup-x86_64.exe -q -P make,gcc-core,gcc-g++,pkg-config
+
 
       # 7. 执行 setupcmakewin.sh
       - name: Run setupcmakewin.sh
