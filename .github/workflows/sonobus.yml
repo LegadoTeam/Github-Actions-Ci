@@ -53,8 +53,10 @@ jobs:
       - name: Install Cygwin
         run: |
             choco install cygwin --no-progress -y
+              # 下载官方安装器
+            curl -L -o setup-x86_64.exe https://cygwin.com/setup-x86_64.exe
             # 安装常用构建工具
-            C:\tools\cygwin\setup-x86_64.exe -q -P make,gcc-core,gcc-g++,pkg-config
+            ./setup-x86_64.exe -q -n -N -d -R C:\tools\cygwin -s http://mirrors.kernel.org/sourceware/cygwin/ -P make,gcc-core,gcc-g++,pkg-config
 
 
       # 7. 执行 setupcmakewin.sh
