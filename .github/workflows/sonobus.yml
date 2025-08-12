@@ -17,7 +17,7 @@ jobs:
         with:
           repository: mgz0227/sonobus
           token: ${{ secrets.TOKEN_MGZ }}
-          fetch-depth: 0
+          submodules: recursive
 
       # 2. 缓存 CMake 构建目录
       - name: Cache CMake build
