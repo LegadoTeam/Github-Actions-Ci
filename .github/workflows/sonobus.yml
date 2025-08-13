@@ -75,11 +75,25 @@ jobs:
           powershell Compress-Archive -Path build/SonoBus_artefacts/Release/* -DestinationPath SonoBus_Windows.zip
 
       # 10. 发布 Release
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
-        with:
-          files: SonoBus_Windows.zip
-          tag_name: ${{ github.ref_name || format('manual-{0}', github.run_number) }}
-          name: Release ${{ github.ref_name || format('manual-{0}', github.run_number) }}
+      - name: Prepare artifacts for Release
+        run: |
+          $src = "sonobus\build\SonoBus_artefacts\${{ github.event.inputs.release_tag }}"
+          $dst = "release_upload"
+          Remove-Item -Recurse -Force $dst -ErrorAction Ignore
+          New-Item -ItemType Directory -Path $dst
+          Get-ChildItem $src -Recurse | Where-Object { $_.Extension -notin ".lib",".exp" } | ForEach-Object {
+            $target = Join-Path $dst ($_.FullName.Substring($src.Length+1))
+            New-Item -ItemType Directory -Force -Path (Split-Path $target)
+            Copy-Item $_.FullName $target
+          }
+
+      - name: Upload Windows artifacts to Release
+        uses: softprops/action-gh-release@master
         env:
           GITHUB_TOKEN: ${{ secrets.TOKEN_MGZ }}
+        with:
+          files: release_upload/**
+          name: ${{ github.event.inputs.release_name }}
+          tag_name: ${{ github.event.inputs.release_tag }}
+          body_path: ${{ github.event.inputs.body_file }}
+
