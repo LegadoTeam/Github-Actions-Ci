@@ -22,7 +22,7 @@ jobs:
 
     steps:
       - name: Checkout workflow repo
-        uses: actions/checkout@amin
+        uses: actions/checkout@main
 
       - name: Clone private source repository
         run: |
