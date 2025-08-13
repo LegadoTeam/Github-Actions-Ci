@@ -1,69 +1,90 @@
 name: Build SonoBus Windows
 
 on:
-  workflow_dispatch:
-    inputs:
-      release_tag:
-        description: 'Custom release tag for GitHub Release'
-        required: true
-        default: 'v1.7.2'
-      release_name:
-        description: 'Release display name'
-        required: false
-        default: 'SonoBus Windows Release'
-      aax_sdk_path:
-        description: 'Path to AAX SDK (relative to repo root)'
-        required: false
-        default: './SDK/aax'
+  workflow_dispatch: # 手动触发
+  push:
+    tags:
+      - 'v*' # 推送 tag 会自动发布
 
 jobs:
-  build-windows:
-    runs-on: ubuntu-latest
+  build:
+    runs-on: windows-latest
 
     steps:
-      - name: Checkout workflow repo
-        uses: actions/checkout@main
+      # 1. 拉取私有仓库
+      - name: Checkout SonoBus repo with TOKEN_MGZ
+        uses: actions/checkout@v4
+        with:
+          repository: mgz0227/sonobus
+          token: ${{ secrets.TOKEN_MGZ }}
+          submodules: recursive
+          fetch-depth: 0 
 
-      - name: Clone private source repository
+      # 2. 缓存 CMake 构建目录
+      - name: Cache CMake build
+        uses: actions/cache@v4
+        with:
+          path: build
+          key: cmake-build-${{ runner.os }}-${{ hashFiles('**/CMakeLists.txt') }}
+          restore-keys: |
+            cmake-build-${{ runner.os }}-
+
+      # 3. 缓存 Cygwin
+      - name: Cache Cygwin
+        uses: actions/cache@v4
+        with:
+          path: C:\tools\cygwin
+          key: cygwin-${{ runner.os }}-v1
+          restore-keys: |
+            cygwin-${{ runner.os }}-
+
+      # 4. 安装 VS 2022（NativeDesktop 工作负载）
+      - name: Install Visual Studio 2022
         run: |
-          git clone --recurse-submodules https://x-access-token:${{ secrets.TOKEN_MGZ }}@github.com/mgz0227/sonobus.git
-          cd sonobus
-          git checkout main
+          choco install visualstudio2022community --package-parameters "--add Microsoft.VisualStudio.Workload.NativeDesktop --includeRecommended --passive --locale en-US" -y
+          choco install visualstudio2022buildtools --package-parameters "--includeRecommended --passive --locale en-US" -y
 
-      - name: Install dependencies
-        run: sudo apt update && sudo apt install -y mingw-w64 cmake
+      # 5. 安装最新 CMake
+      - name: Install CMake
+        uses: jwlawson/actions-setup-cmake@v1
+        with:
+          cmake-version: 'latest'
 
-      - name: Build Windows version
+      # 6. 安装 Cygwin（如果缓存中没有则安装）
+      - name: Install Cygwin
         run: |
-          cd sonobus
-          mkdir -p build
-          cd build
+            choco install cygwin --no-progress -y
+              # 下载官方安装器
+            curl -L -o setup-x86_64.exe https://cygwin.com/setup-x86_64.exe
+            # 安装常用构建工具
+            ./setup-x86_64.exe -q -n -N -d -R C:\tools\cygwin -s http://mirrors.kernel.org/sourceware/cygwin/ -P make,gcc-core,gcc-g++,pkg-config
 
-          DEPS=""
-          if [ -d "${{ github.event.inputs.aax_sdk_path }}" ]; then
-            echo "Using AAX SDK at ${{ github.event.inputs.aax_sdk_path }}"
-            DEPS="-DAAX_SDK_PATH=${{ github.event.inputs.aax_sdk_path }}"
-          else
-            echo "Warning: AAX SDK path not found, skipping AAX build"
-          fi
 
-          cmake .. \
-            -DCMAKE_SYSTEM_NAME=Windows \
-            -DCMAKE_C_COMPILER=x86_64-w64-mingw32-gcc \
-            -DCMAKE_CXX_COMPILER=x86_64-w64-mingw32-g++ \
-            -DCMAKE_INSTALL_PREFIX=build/SonoBus_artefacts/Release \
-            $DEPS
+      # 7. 执行 setupcmakewin.sh
+      - name: Run setupcmakewin.sh
+        shell: bash
+        run: |
+          chmod +x ./setupcmakewin.sh
+          ./setupcmakewin.sh
 
-          cmake --build . --config Release
-          cmake --install .
+      # 8. 执行 buildcmake.sh
+      - name: Run buildcmake.sh
+        shell: bash
+        run: |
+          chmod +x ./buildcmake.sh
+          ./buildcmake.sh
 
-      - name: Upload Windows artifacts to Release
-        uses: softprops/action-gh-release@master
-        continue-on-error: false
+      # 9. 压缩产物
+      - name: Compress Release folder
+        run: |
+          powershell Compress-Archive -Path build/SonoBus_artefacts/Release/* -DestinationPath SonoBus_Windows.zip
+
+      # 10. 发布 Release
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: SonoBus_Windows.zip
+          tag_name: ${{ github.ref_name || format('manual-{0}', github.run_number) }}
+          name: Release ${{ github.ref_name || format('manual-{0}', github.run_number) }}
         env:
           GITHUB_TOKEN: ${{ secrets.TOKEN_MGZ }}
-        with:
-          files: sonobus/build/SonoBus_artefacts/Release/**
-          name: ${{ github.event.inputs.release_name }}
-          tag_name: ${{ github.event.inputs.release_tag }}
-
