@@ -1,9 +1,24 @@
 name: Build SonoBus Windows
 
 on:
-  push:
-    branches:
-      - main
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Custom release tag for GitHub Release'
+        required: true
+        default: 'v1.0.0'
+      release_name:
+        description: 'Release display name'
+        required: false
+        default: 'SonoBus Windows Release'
+      aax_sdk_path:
+        description: 'Path to AAX SDK (relative to repo root)'
+        required: false
+        default: './SDK/aax'
+      body_file:
+        description: 'Path to release notes file'
+        required: false
+        default: 'release.txt'
 
 jobs:
   build-windows:
@@ -11,7 +26,7 @@ jobs:
 
     steps:
       - name: Checkout workflow repo
-        uses: actions/checkout@main
+        uses: actions/checkout@amin
 
       - name: Clone private source repository
         run: |
@@ -27,16 +42,32 @@ jobs:
           cd sonobus
           mkdir -p build
           cd build
+
+          DEPS=""
+          if [ -d "${{ github.event.inputs.aax_sdk_path }}" ]; then
+            echo "Using AAX SDK at ${{ github.event.inputs.aax_sdk_path }}"
+            DEPS="-DAAX_SDK_PATH=${{ github.event.inputs.aax_sdk_path }}"
+          else
+            echo "Warning: AAX SDK path not found, skipping AAX build"
+          fi
+
           cmake .. \
             -DCMAKE_SYSTEM_NAME=Windows \
             -DCMAKE_C_COMPILER=x86_64-w64-mingw32-gcc \
             -DCMAKE_CXX_COMPILER=x86_64-w64-mingw32-g++ \
-            -DCMAKE_INSTALL_PREFIX=build/SonoBus_artefacts/Release
+            -DCMAKE_INSTALL_PREFIX=build/SonoBus_artefacts/Release \
+            $DEPS
+
           cmake --build . --config Release
           cmake --install .
 
-      - name: Upload Windows artifacts
-        uses: actions/upload-artifact@main
+      - name: Upload Windows artifacts to Release
+        uses: softprops/action-gh-release@master
+        continue-on-error: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.TOKEN_MGZ }}
         with:
-          name: sonobus-windows
-          path: sonobus/build/SonoBus_artefacts/Release
+          files: sonobus/build/SonoBus_artefacts/Release/**
+          name: ${{ github.event.inputs.release_name }}
+          tag_name: ${{ github.event.inputs.release_tag }}
+
