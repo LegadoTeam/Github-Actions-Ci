@@ -1,90 +1,39 @@
 name: Build SonoBus Windows
 
 on:
-  workflow_dispatch: # 手动触发
   push:
-    tags:
-      - 'v*' # 推送 tag 会自动发布
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
 
 jobs:
-  build:
-    runs-on: windows-latest
+  build-windows:
+    runs-on: ubuntu-latest
 
     steps:
-      # 1. 拉取私有仓库
-      - name: Checkout SonoBus repo with TOKEN_MGZ
+      - name: Checkout
         uses: actions/checkout@v4
-        with:
-          repository: mgz0227/sonobus
-          token: ${{ secrets.TOKEN_MGZ }}
-          submodules: recursive
-          fetch-depth: 0 
 
-      # 2. 缓存 CMake 构建目录
-      - name: Cache CMake build
-        uses: actions/cache@v4
-        with:
-          path: build
-          key: cmake-build-${{ runner.os }}-${{ hashFiles('**/CMakeLists.txt') }}
-          restore-keys: |
-            cmake-build-${{ runner.os }}-
+      - name: Install dependencies
+        run: sudo apt update && sudo apt install -y mingw-w64 cmake
 
-      # 3. 缓存 Cygwin
-      - name: Cache Cygwin
-        uses: actions/cache@v4
-        with:
-          path: C:\tools\cygwin
-          key: cygwin-${{ runner.os }}-v1
-          restore-keys: |
-            cygwin-${{ runner.os }}-
-
-      # 4. 安装 VS 2022（NativeDesktop 工作负载）
-      - name: Install Visual Studio 2022
+      - name: Build Windows version
         run: |
-          choco install visualstudio2022community --package-parameters "--add Microsoft.VisualStudio.Workload.NativeDesktop --includeRecommended --passive --locale en-US" -y
-          choco install visualstudio2022buildtools --package-parameters "--includeRecommended --passive --locale en-US" -y
+          mkdir -p build
+          cd build
+          cmake .. \
+            -DCMAKE_SYSTEM_NAME=Windows \
+            -DCMAKE_C_COMPILER=x86_64-w64-mingw32-gcc \
+            -DCMAKE_CXX_COMPILER=x86_64-w64-mingw32-g++ \
+            -DCMAKE_INSTALL_PREFIX=install
+          cmake --build . --config Release
+          cmake --install .
+          ls -R install/bin
 
-      # 5. 安装最新 CMake
-      - name: Install CMake
-        uses: jwlawson/actions-setup-cmake@v1
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v3
         with:
-          cmake-version: 'latest'
-
-      # 6. 安装 Cygwin（如果缓存中没有则安装）
-      - name: Install Cygwin
-        run: |
-            choco install cygwin --no-progress -y
-              # 下载官方安装器
-            curl -L -o setup-x86_64.exe https://cygwin.com/setup-x86_64.exe
-            # 安装常用构建工具
-            ./setup-x86_64.exe -q -n -N -d -R C:\tools\cygwin -s http://mirrors.kernel.org/sourceware/cygwin/ -P make,gcc-core,gcc-g++,pkg-config
-
-
-      # 7. 执行 setupcmakewin.sh
-      - name: Run setupcmakewin.sh
-        shell: bash
-        run: |
-          chmod +x ./setupcmakewin.sh
-          ./setupcmakewin.sh
-
-      # 8. 执行 buildcmake.sh
-      - name: Run buildcmake.sh
-        shell: bash
-        run: |
-          chmod +x ./buildcmake.sh
-          ./buildcmake.sh
-
-      # 9. 压缩产物
-      - name: Compress Release folder
-        run: |
-          powershell Compress-Archive -Path build/SonoBus_artefacts/Release/* -DestinationPath SonoBus_Windows.zip
-
-      # 10. 发布 Release
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
-        with:
-          files: SonoBus_Windows.zip
-          tag_name: ${{ github.ref_name || format('manual-{0}', github.run_number) }}
-          name: Release ${{ github.ref_name || format('manual-{0}', github.run_number) }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.TOKEN_MGZ }}
+          name: sonobus-windows
+          path: build/install/bin
