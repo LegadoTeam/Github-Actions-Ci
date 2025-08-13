@@ -4,36 +4,39 @@ on:
   push:
     branches:
       - main
-  pull_request:
-    branches:
-      - main
 
 jobs:
   build-windows:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - name: Checkout workflow repo
+        uses: actions/checkout@main
+
+      - name: Clone private source repository
+        run: |
+          git clone https://x-access-token:${{ secrets.TOKEN_MGZ }}@github.com/mgz0227/sonobus.git
+          cd sonobus
+          git checkout main
 
       - name: Install dependencies
         run: sudo apt update && sudo apt install -y mingw-w64 cmake
 
       - name: Build Windows version
         run: |
+          cd sonobus
           mkdir -p build
           cd build
           cmake .. \
             -DCMAKE_SYSTEM_NAME=Windows \
             -DCMAKE_C_COMPILER=x86_64-w64-mingw32-gcc \
             -DCMAKE_CXX_COMPILER=x86_64-w64-mingw32-g++ \
-            -DCMAKE_INSTALL_PREFIX=install
+            -DCMAKE_INSTALL_PREFIX=build/SonoBus_artefacts/Release
           cmake --build . --config Release
           cmake --install .
-          ls -R install/bin
 
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v3
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@main
         with:
           name: sonobus-windows
-          path: build/install/bin
+          path: sonobus/build/SonoBus_artefacts/Release
