@@ -15,7 +15,7 @@ jobs:
 
       - name: Clone private source repository
         run: |
-          git clone https://x-access-token:${{ secrets.TOKEN_MGZ }}@github.com/mgz0227/sonobus.git
+          git clone --recurse-submodules https://x-access-token:${{ secrets.TOKEN_MGZ }}@github.com/mgz0227/sonobus.git
           cd sonobus
           git checkout main
 
