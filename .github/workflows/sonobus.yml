@@ -39,10 +39,11 @@ jobs:
             cygwin-${{ runner.os }}-
 
       # 4. 安装 VS 2022（NativeDesktop 工作负载）
-      - name: Install Visual Studio 2022
-        run: |
-          choco install visualstudio2022community --package-parameters "--add Microsoft.VisualStudio.Workload.NativeDesktop --includeRecommended --passive --locale en-US" -y
-          choco install visualstudio2022buildtools --package-parameters "--includeRecommended --passive --locale en-US" -y
+      - name: Install Visual Studio 2022 components
+        uses: microsoft/setup-msbuild@main
+        with:
+          vs-version: '17.0'  # VS2022
+          msbuild-path: 'C:\Program Files\Microsoft Visual Studio\2022\Enterprise\MSBuild\Current\Bin'
 
       # 5. 安装最新 CMake
       - name: Install CMake
