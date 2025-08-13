@@ -72,9 +72,8 @@ jobs:
 
       # 7. 执行 setupcmakewin.sh
       - name: Run setupcmakewin.sh
-        shell: bash
+        shell: pwsh
         run: |
-          chmod +x ./setupcmakewin.sh
           ./setupcmakewin.sh
 
       # 8. 执行 buildcmake.sh
