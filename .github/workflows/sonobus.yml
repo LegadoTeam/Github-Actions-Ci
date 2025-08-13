@@ -6,7 +6,7 @@ on:
       release_tag:
         description: 'Custom release tag for GitHub Release'
         required: true
-        default: 'v1.0.0'
+        default: 'v1.7.2'
       release_name:
         description: 'Release display name'
         required: false
@@ -15,10 +15,6 @@ on:
         description: 'Path to AAX SDK (relative to repo root)'
         required: false
         default: './SDK/aax'
-      body_file:
-        description: 'Path to release notes file'
-        required: false
-        default: 'release.txt'
 
 jobs:
   build-windows:
