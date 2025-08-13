@@ -53,7 +53,11 @@ jobs:
       # 6. 安装 Cygwin（如果缓存中没有则安装）
       - name: Install Cygwin
         uses: cygwin/cygwin-install-action@master
-
+        
+      - name: Fix line endings
+        run: |
+          git config --global core.autocrlf input
+          find . -name "*.sh" -exec dos2unix {} \;
 
       # 7. 执行 setupcmakewin.sh
       - name: Run setupcmakewin.sh
