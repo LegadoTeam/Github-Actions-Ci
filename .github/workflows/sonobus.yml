@@ -19,6 +19,9 @@ jobs:
           token: ${{ secrets.TOKEN_MGZ }}
           submodules: recursive
           fetch-depth: 0 
+          persist-credentials: true
+    # 避免 CRLF
+          clean: true
 
       # 2. 缓存 CMake 构建目录
       - name: Cache CMake build
