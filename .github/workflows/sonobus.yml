@@ -62,18 +62,14 @@ jobs:
             # 安装常用构建工具
             ./setup-x86_64.exe -q -n -N -d -R C:\tools\cygwin -s http://mirrors.kernel.org/sourceware/cygwin/ -P make,gcc-core,gcc-g++,pkg-config
         
-      - name: Convert shell scripts to LF
-        shell: pwsh
-        run: |
-          Get-ChildItem -Recurse -Filter *.sh | ForEach-Object {
-              (Get-Content $_.FullName) -replace "`r`n","`n" | Set-Content $_.FullName -NoNewline
-          }
+    
 
 
       # 7. 执行 setupcmakewin.sh
       - name: Run setupcmakewin.sh
-        shell: pwsh
+        shell: bash
         run: |
+          chmod +x ./setupcmakewin.sh
           ./setupcmakewin.sh
 
       # 8. 执行 buildcmake.sh
