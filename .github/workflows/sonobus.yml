@@ -55,7 +55,12 @@ jobs:
 
       # 6. 安装 Cygwin（如果缓存中没有则安装）
       - name: Install Cygwin
-        uses: cygwin/cygwin-install-action@master
+        run: |
+            choco install cygwin --no-progress -y
+              # 下载官方安装器
+            curl -L -o setup-x86_64.exe https://cygwin.com/setup-x86_64.exe
+            # 安装常用构建工具
+            ./setup-x86_64.exe -q -n -N -d -R C:\tools\cygwin -s http://mirrors.kernel.org/sourceware/cygwin/ -P make,gcc-core,gcc-g++,pkg-config
         
       - name: Convert shell scripts to LF
         shell: pwsh
