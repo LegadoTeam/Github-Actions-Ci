@@ -83,15 +83,22 @@ jobs:
       # 10. 发布 Release
       - name: Prepare artifacts for Release
         run: |
-          $src = "sonobus\build\SonoBus_artefacts\Release"
-          $dst = "release_upload"
-          Remove-Item -Recurse -Force $dst -ErrorAction Ignore
-          New-Item -ItemType Directory -Path $dst
-          Get-ChildItem $src -Recurse | Where-Object { $_.Extension -notin ".lib",".exp" } | ForEach-Object {
-            $target = Join-Path $dst ($_.FullName.Substring($src.Length+1))
-            New-Item -ItemType Directory -Force -Path (Split-Path $target)
-            Copy-Item $_.FullName $target
-          }
+            $src = "sonobus/build/SonoBus_artefacts/Release"
+            $dst = "release_upload"
+            New-Item -ItemType Directory -Force -Path $dst | Out-Null
+  
+            if (-Not (Test-Path $src)) {
+              Write-Error "❌ Artefacts directory not found: $src"
+              exit 1
+            }
+  
+            # 复制所有文件，排除 .lib 和 .exp
+            Get-ChildItem $src -Recurse | `
+              Where-Object { $_.Extension -notin '.lib', '.exp' } | `
+              ForEach-Object {
+                $target = Join-Path $dst $_.Name
+                Copy-Item $_.FullName -Destination $target -Force
+              }
 
       - name: Upload Windows artifacts to Release
         uses: softprops/action-gh-release@master
