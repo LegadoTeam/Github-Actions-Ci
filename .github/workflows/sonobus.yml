@@ -83,7 +83,7 @@ jobs:
       # 9. 删除 Release中多余文件
       - name: Remove .lib and .exp files
         run: |
-          $artefacts = "sonobus/build/SonoBus_artefacts/Release"
+          $artefacts = "build/SonoBus_artefacts/Release"
           if (Test-Path $artefacts) {
             Get-ChildItem $artefacts -Recurse -Include *.lib, *.exp | Remove-Item -Force
             Write-Host "✅ Removed .lib and .exp files from $artefacts"
