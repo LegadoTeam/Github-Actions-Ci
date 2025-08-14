@@ -79,15 +79,11 @@ jobs:
           chmod +x ./buildcmake.sh
           ./buildcmake.sh
 
-      # 9. 压缩产物
-      - name: Compress Release folder
-        run: |
-          powershell Compress-Archive -Path build/SonoBus_artefacts/Release/* -DestinationPath SonoBus_Windows.zip
 
       # 10. 发布 Release
       - name: Prepare artifacts for Release
         run: |
-          $src = "sonobus\build\SonoBus_artefacts\${{ github.event.inputs.release_tag }}"
+          $src = "sonobus\build\SonoBus_artefacts\Release"
           $dst = "release_upload"
           Remove-Item -Recurse -Force $dst -ErrorAction Ignore
           New-Item -ItemType Directory -Path $dst
