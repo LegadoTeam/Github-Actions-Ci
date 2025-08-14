@@ -79,12 +79,8 @@ jobs:
           chmod +x ./buildcmake.sh
           ./buildcmake.sh
 
-      # 9. 压缩产物
-      - name: Compress Release folder
-        run: |
-          powershell Compress-Archive -Path build/SonoBus_artefacts/Release/* -DestinationPath SonoBus_Windows.zip
 
-      # 10. 删除 Release中多余文件
+      # 9. 删除 Release中多余文件
       - name: Remove .lib and .exp files
         run: |
           $artefacts = "sonobus/build/SonoBus_artefacts/Release"
@@ -94,6 +90,13 @@ jobs:
           } else {
             Write-Warning "⚠️ Artefacts directory not found: $artefacts"
           }
+          
+      # 10. 压缩产物
+      - name: Compress Release folder
+        run: |
+          powershell Compress-Archive -Path build/SonoBus_artefacts/Release/* -DestinationPath SonoBus_Windows.zip
+
+
 
       # 11. 发布 Release
       - name: Create GitHub Release
