@@ -17,6 +17,7 @@ jobs:
         with:
           repository: mgz0227/sonobus
           token: ${{ secrets.TOKEN_MGZ }}
+          ref: sonobus8
           submodules: recursive
           fetch-depth: 0 
           persist-credentials: true
