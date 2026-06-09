@@ -22,7 +22,6 @@ jobs:
           persist-credentials: true
           clean: true
 
-      # 不缓存整个 CMake build 目录，避免 CMakeCache.txt 残留旧 generator
       - name: Clean old CMake build directory
         shell: pwsh
         run: |
@@ -61,52 +60,57 @@ jobs:
         run: |
           C:\tools\cygwin\bin\bash.exe --version
           C:\tools\cygwin\bin\bash.exe -lc "uname -a"
-          C:\tools\cygwin\bin\bash.exe -lc "pwd"
-          C:\tools\cygwin\bin\bash.exe -lc "ls -la"
+          C:\tools\cygwin\bin\bash.exe -lc "cygpath -u '$env:GITHUB_WORKSPACE'"
+
+      - name: Normalize shell scripts line endings
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          $files = @(
+            "setupcmakewin.sh",
+            "buildcmake.sh"
+          )
+
+          foreach ($file in $files) {
+            if (!(Test-Path $file)) {
+              Write-Error "$file not found"
+              exit 1
+            }
+
+            $text = Get-Content $file -Raw
+            $text = $text -replace "`r`n", "`n"
+            $text = $text -replace "`r", "`n"
+
+            $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+            [System.IO.File]::WriteAllText((Resolve-Path $file), $text, $utf8NoBom)
+
+            Write-Host "Normalized line endings: $file"
+          }
 
       - name: Run setupcmakewin.sh
-        shell: C:\tools\cygwin\bin\bash.exe --noprofile --norc -eo pipefail {0}
+        shell: pwsh
         run: |
-          set -euxo pipefail
+          $ErrorActionPreference = "Stop"
 
-          if [ ! -f ./setupcmakewin.sh ]; then
-            echo "ERROR: setupcmakewin.sh not found"
-            ls -la
-            exit 1
-          fi
+          $bash = "C:\tools\cygwin\bin\bash.exe"
+          $cygWorkspace = (& $bash -lc "cygpath -u '$env:GITHUB_WORKSPACE'").Trim()
 
-          # 修复 Windows CRLF 换行符问题
-          sed -i 's/\r$//' ./setupcmakewin.sh
+          Write-Host "Cygwin workspace: $cygWorkspace"
 
-          chmod +x ./setupcmakewin.sh
-
-          echo "===== setupcmakewin.sh first 200 lines ====="
-          sed -n '1,200p' ./setupcmakewin.sh
-
-          echo "===== run setupcmakewin.sh ====="
-          bash -x ./setupcmakewin.sh
+          & $bash -lc "cd '$cygWorkspace' && chmod +x ./setupcmakewin.sh && echo '===== setupcmakewin.sh first 200 lines =====' && sed -n '1,200p' ./setupcmakewin.sh && echo '===== run setupcmakewin.sh =====' && bash -x ./setupcmakewin.sh"
 
       - name: Run buildcmake.sh
-        shell: C:\tools\cygwin\bin\bash.exe --noprofile --norc -eo pipefail {0}
+        shell: pwsh
         run: |
-          set -euxo pipefail
+          $ErrorActionPreference = "Stop"
 
-          if [ ! -f ./buildcmake.sh ]; then
-            echo "ERROR: buildcmake.sh not found"
-            ls -la
-            exit 1
-          fi
+          $bash = "C:\tools\cygwin\bin\bash.exe"
+          $cygWorkspace = (& $bash -lc "cygpath -u '$env:GITHUB_WORKSPACE'").Trim()
 
-          # 修复 Windows CRLF 换行符问题
-          sed -i 's/\r$//' ./buildcmake.sh
+          Write-Host "Cygwin workspace: $cygWorkspace"
 
-          chmod +x ./buildcmake.sh
-
-          echo "===== buildcmake.sh first 200 lines ====="
-          sed -n '1,200p' ./buildcmake.sh
-
-          echo "===== run buildcmake.sh ====="
-          bash -x ./buildcmake.sh
+          & $bash -lc "cd '$cygWorkspace' && chmod +x ./buildcmake.sh && echo '===== buildcmake.sh first 200 lines =====' && sed -n '1,200p' ./buildcmake.sh && echo '===== run buildcmake.sh =====' && bash -x ./buildcmake.sh"
 
       - name: Remove .lib and .exp files
         shell: pwsh
@@ -123,6 +127,7 @@ jobs:
         shell: pwsh
         run: |
           $releasePath = "build/SonoBus_artefacts/Release"
+
           if (!(Test-Path $releasePath)) {
             Write-Error "Release folder not found: $releasePath"
             exit 1
@@ -146,3 +151,4 @@ jobs:
           name: SonoBus ${{ github.ref_name }}
         env:
           GITHUB_TOKEN: ${{ secrets.TOKEN_MGZ }}
+
