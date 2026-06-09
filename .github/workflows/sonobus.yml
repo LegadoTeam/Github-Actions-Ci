@@ -17,10 +17,59 @@ jobs:
           repository: mgz0227/sonobus
           token: ${{ secrets.TOKEN_MGZ }}
           ref: sonobus8
-          submodules: recursive
           fetch-depth: 0
           persist-credentials: true
           clean: true
+          submodules: false
+
+      - name: Checkout submodules manually
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $PSNativeCommandUseErrorActionPreference = $true
+
+          Write-Host "===== Current repo ====="
+          git status
+          git branch --show-current
+          git rev-parse HEAD
+
+          Write-Host "===== .gitmodules ====="
+          if (!(Test-Path .gitmodules)) {
+            Write-Error ".gitmodules not found"
+            exit 1
+          }
+
+          Get-Content .gitmodules
+
+          Write-Host "===== Sync submodules ====="
+          git submodule sync --recursive
+
+          Write-Host "===== Init/update submodules ====="
+          git submodule update --init --recursive --force --jobs 4
+
+          Write-Host "===== Submodule status ====="
+          git submodule status --recursive
+
+          Write-Host "===== Check required subdeps ====="
+          $required = @(
+            "subdeps/aoo",
+            "subdeps/juce",
+            "subdeps/ff_meters",
+            "subdeps/nlohmann_json"
+          )
+
+          foreach ($dir in $required) {
+            if (!(Test-Path $dir)) {
+              Write-Error "Missing required submodule directory: $dir"
+              exit 1
+            }
+
+            Write-Host "Found: $dir"
+          }
+
+          Write-Host "===== List subdeps ====="
+          Get-ChildItem subdeps
+
 
       - name: Clean old CMake build directory
         shell: pwsh
