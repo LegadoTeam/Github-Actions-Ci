@@ -27,6 +27,57 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  language-pack:
+    name: Offline language pack - ${{ matrix.platform }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-2022
+            platform: Windows-x64
+            executable: lrc-language-helper.exe
+          - os: macos-15-intel
+            platform: macOS-x64
+            executable: lrc-language-helper
+          - os: macos-15
+            platform: macOS-arm64
+            executable: lrc-language-helper
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 35
+    steps:
+      - name: Fetch private source / 拉取私有源码
+        uses: actions/checkout@v4
+        with:
+          repository: mgz0227/Lyrics-Assistant
+          ref: ${{ inputs.source_ref }}
+          token: ${{ secrets.TOKEN_MGZ }}
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: offline/requirements*.txt
+      - name: Build local dictionaries and models / 打包本地词典和模型
+        run: python offline/build.py all
+      - name: Test real offline inference / 验证真实离线生成
+        run: python -m unittest discover -s offline/tests -v
+      - name: Verify packaged executable / 验证打包程序
+        run: python offline/smoke.py --helper offline/dist/lrc-language-helper/${{ matrix.executable }}
+      - name: Archive Windows language pack / 打包 Windows 语言包
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Compress-Archive -LiteralPath offline/dist/lrc-language-helper -DestinationPath LRC-Language-Pack-${{ matrix.platform }}.zip
+      - name: Archive macOS language pack / 打包 macOS 语言包
+        if: runner.os == 'macOS'
+        run: ditto -c -k --sequesterRsrc --keepParent offline/dist/lrc-language-helper LRC-Language-Pack-${{ matrix.platform }}.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LRC-Language-Pack-${{ matrix.platform }}
+          path: LRC-Language-Pack-${{ matrix.platform }}.zip
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 14
+
   web-api:
     name: Web and authorization tests
     runs-on: ubuntu-latest
