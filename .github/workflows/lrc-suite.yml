@@ -1,0 +1,106 @@
+name: LRC Suite - Windows and macOS
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_ref:
+        description: '私库提交 SHA / Private source commit SHA (or main)'
+        required: true
+        default: main
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lrc-suite-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  web-api:
+    name: Web and authorization tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Fetch private source / 拉取私有源码
+        uses: actions/checkout@v4
+        with:
+          repository: mgz0227/Lyrics-Assistant
+          ref: ${{ inputs.source_ref }}
+          token: ${{ secrets.TOKEN_MGZ }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+
+  native:
+    name: ${{ matrix.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-2022
+            name: Windows x64 - VST3 AAX Standalone
+            artifact: LRC-Suite-Windows-x64
+          - os: macos-14
+            name: macOS Universal - VST3 AU AAX Standalone
+            artifact: LRC-Suite-macOS-universal
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 50
+    env:
+      LRC_PUBLIC_KEY_HEX: ${{ vars.LRC_PUBLIC_KEY_HEX }}
+      LRC_API_ORIGIN: ${{ vars.LRC_API_ORIGIN || 'http://127.0.0.1:4318' }}
+    steps:
+      - name: Fetch private source / 拉取私有源码
+        uses: actions/checkout@v4
+        with:
+          repository: mgz0227/Lyrics-Assistant
+          ref: ${{ inputs.source_ref }}
+          token: ${{ secrets.TOKEN_MGZ }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Configure Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
+          cmake -S plugin -B build -G 'Visual Studio 17 2022' -A x64 -DLYRICUE_BUILD_AAX=ON "-DLYRICUE_AAX_SDK=$pwd/SDK/aax" "-DLYRICUE_PUBLIC_KEY_HEX=$env:LRC_PUBLIC_KEY_HEX" "-DLYRICUE_SERVER_URL=$env:LRC_API_ORIGIN"
+      - name: Configure macOS universal / 配置双架构
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          cmake -S plugin -B build -G Xcode -DCMAKE_OSX_ARCHITECTURES='arm64;x86_64' -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0 -DLYRICUE_BUILD_AAX=ON "-DLYRICUE_AAX_SDK=$PWD/SDK/aax" "-DLYRICUE_PUBLIC_KEY_HEX=$LRC_PUBLIC_KEY_HEX" "-DLYRICUE_SERVER_URL=$LRC_API_ORIGIN"
+      - name: Build / 编译
+        run: cmake --build build --config Release --parallel 2
+      - name: Native tests / 原生测试
+        run: ctest --test-dir build -C Release --output-on-failure
+      - name: Stage binaries only / 仅打包二进制
+        run: node scripts/package-native.mjs build ${{ matrix.artifact }}
+      - name: Archive Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Compress-Archive -LiteralPath "artifacts/${{ matrix.artifact }}" -DestinationPath "artifacts/${{ matrix.artifact }}.zip"
+      - name: Check universal binaries and archive macOS
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          lipo -verify_arch arm64 x86_64 "artifacts/${{ matrix.artifact }}/LRC Suite.vst3/Contents/MacOS/LRC Suite"
+          lipo -verify_arch arm64 x86_64 "artifacts/${{ matrix.artifact }}/LRC Suite.component/Contents/MacOS/LRC Suite"
+          lipo -verify_arch arm64 x86_64 "artifacts/${{ matrix.artifact }}/LRC Suite.aaxplugin/Contents/MacOS/LRC Suite"
+          ditto -c -k --sequesterRsrc --keepParent "artifacts/${{ matrix.artifact }}" "artifacts/${{ matrix.artifact }}.zip"
+      - name: Upload unsigned test builds / 上传未签名测试包
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}-unsigned
+          path: artifacts/${{ matrix.artifact }}.zip
+          if-no-files-found: error
+          retention-days: 14
