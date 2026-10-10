@@ -93,9 +93,9 @@ jobs:
         if: runner.os == 'macOS'
         shell: bash
         run: |
-          lipo -verify_arch arm64 x86_64 "artifacts/${{ matrix.artifact }}/LRC Suite.vst3/Contents/MacOS/LRC Suite"
-          lipo -verify_arch arm64 x86_64 "artifacts/${{ matrix.artifact }}/LRC Suite.component/Contents/MacOS/LRC Suite"
-          lipo -verify_arch arm64 x86_64 "artifacts/${{ matrix.artifact }}/LRC Suite.aaxplugin/Contents/MacOS/LRC Suite"
+          lipo "artifacts/${{ matrix.artifact }}/LRC Suite.vst3/Contents/MacOS/LRC Suite" -verify_arch arm64 x86_64
+          lipo "artifacts/${{ matrix.artifact }}/LRC Suite.component/Contents/MacOS/LRC Suite" -verify_arch arm64 x86_64
+          lipo "artifacts/${{ matrix.artifact }}/LRC Suite.aaxplugin/Contents/MacOS/LRC Suite" -verify_arch arm64 x86_64
           ditto -c -k --sequesterRsrc --keepParent "artifacts/${{ matrix.artifact }}" "artifacts/${{ matrix.artifact }}.zip"
       - name: Upload unsigned test builds / 上传未签名测试包
         uses: actions/upload-artifact@v4
