@@ -8,6 +8,16 @@ on:
         required: true
         default: main
         type: string
+      sign_windows:
+        description: '启用 Windows 签名防篡改并签名 / Sign and protect Windows binaries'
+        required: true
+        default: false
+        type: boolean
+      trust_private_ca:
+        description: '仅本次临时 runner 信任所提供私有 CA / Trust provided private CA on this runner only'
+        required: true
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -56,6 +66,7 @@ jobs:
     env:
       LRC_PUBLIC_KEY_HEX: ${{ vars.LRC_PUBLIC_KEY_HEX }}
       LRC_API_ORIGIN: ${{ vars.LRC_API_ORIGIN || 'http://127.0.0.1:4318' }}
+      LRC_WINDOWS_CERT_SHA256: ${{ vars.LRC_WINDOWS_CERT_SHA256 }}
     steps:
       - name: Fetch private source / 拉取私有源码
         uses: actions/checkout@v4
@@ -73,7 +84,9 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $PSNativeCommandUseErrorActionPreference = $true
-          cmake -S plugin -B build -G 'Visual Studio 17 2022' -A x64 -DLYRICUE_BUILD_AAX=ON "-DLYRICUE_AAX_SDK=$pwd/SDK/aax" "-DLYRICUE_PUBLIC_KEY_HEX=$env:LRC_PUBLIC_KEY_HEX" "-DLYRICUE_SERVER_URL=$env:LRC_API_ORIGIN"
+          $protection = if ('${{ inputs.sign_windows }}' -eq 'true') { 'ON' } else { 'OFF' }
+          $tests = if ($protection -eq 'ON') { 'OFF' } else { 'ON' }
+          cmake -S plugin -B build -G 'Visual Studio 17 2022' -A x64 -DLYRICUE_BUILD_AAX=ON "-DLYRICUE_AAX_SDK=$pwd/SDK/aax" "-DLYRICUE_PUBLIC_KEY_HEX=$env:LRC_PUBLIC_KEY_HEX" "-DLYRICUE_SERVER_URL=$env:LRC_API_ORIGIN" "-DLRC_ENFORCE_INTEGRITY=$protection" "-DLRC_WINDOWS_CERT_SHA256=$env:LRC_WINDOWS_CERT_SHA256" "-DBUILD_TESTING=$tests"
       - name: Configure macOS universal / 配置双架构
         if: runner.os == 'macOS'
         shell: bash
@@ -81,8 +94,25 @@ jobs:
           cmake -S plugin -B build -G Xcode -DCMAKE_OSX_ARCHITECTURES='arm64;x86_64' -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0 -DLYRICUE_BUILD_AAX=ON "-DLYRICUE_AAX_SDK=$PWD/SDK/aax" "-DLYRICUE_PUBLIC_KEY_HEX=$LRC_PUBLIC_KEY_HEX" "-DLYRICUE_SERVER_URL=$LRC_API_ORIGIN"
       - name: Build / 编译
         run: cmake --build build --config Release --parallel 2
+      - name: Signing script checks / 签名脚本检查
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/sign-windows.test.ps1
       - name: Native tests / 原生测试
+        if: runner.os != 'Windows' || !inputs.sign_windows
         run: ctest --test-dir build -C Release --output-on-failure
+      - name: Sign and verify Windows / 签署并校验 Windows
+        if: runner.os == 'Windows' && inputs.sign_windows
+        shell: pwsh
+        env:
+          LRC_WINDOWS_PFX_BASE64: ${{ secrets.LRC_WINDOWS_PFX_BASE64 }}
+          LRC_WINDOWS_PFX_PASSWORD: ${{ secrets.LRC_WINDOWS_PFX_PASSWORD }}
+          LRC_WINDOWS_CA_CHAIN_PEM: ${{ secrets.LRC_WINDOWS_CA_CHAIN_PEM }}
+          LRC_WINDOWS_TIMESTAMP_URL: ${{ vars.LRC_WINDOWS_TIMESTAMP_URL }}
+        run: |
+          $trustPrivateCA = '${{ inputs.trust_private_ca }}' -eq 'true'
+          ./scripts/sign-windows.ps1 -BuildDirectory build -TrustPrivateCA:$trustPrivateCA
+          'LRC_WINDOWS_AUTHENTICODE_SIGNED=true' | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
       - name: Stage binaries only / 仅打包二进制
         run: node scripts/package-native.mjs build ${{ matrix.artifact }}
       - name: Archive Windows
@@ -97,10 +127,10 @@ jobs:
           lipo "artifacts/${{ matrix.artifact }}/LRC Suite.component/Contents/MacOS/LRC Suite" -verify_arch arm64 x86_64
           lipo "artifacts/${{ matrix.artifact }}/LRC Suite.aaxplugin/Contents/MacOS/LRC Suite" -verify_arch arm64 x86_64
           ditto -c -k --sequesterRsrc --keepParent "artifacts/${{ matrix.artifact }}" "artifacts/${{ matrix.artifact }}.zip"
-      - name: Upload unsigned test builds / 上传未签名测试包
+      - name: Upload builds / 上传构建包
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact }}-unsigned
+          name: ${{ matrix.artifact }}-${{ runner.os == 'Windows' && inputs.sign_windows && 'authenticode' || 'unsigned' }}
           path: artifacts/${{ matrix.artifact }}.zip
           if-no-files-found: error
           retention-days: 14
