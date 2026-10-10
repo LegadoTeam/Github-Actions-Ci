@@ -103,6 +103,7 @@ jobs:
         run: ctest --test-dir build -C Release --output-on-failure
       - name: Sign and verify Windows / 签署并校验 Windows
         if: runner.os == 'Windows' && inputs.sign_windows
+        timeout-minutes: 5
         shell: pwsh
         env:
           LRC_WINDOWS_PFX_BASE64: ${{ secrets.LRC_WINDOWS_PFX_BASE64 }}
