@@ -1,0 +1,38 @@
+name: Plugin Admin - test and package
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_ref:
+        description: '私库提交 SHA / Private source commit SHA'
+        required: true
+        default: main
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  admin:
+    name: Plugin Admin API and browser tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Fetch private source / 拉取私有源码
+        uses: actions/checkout@v4
+        with:
+          repository: mgz0227/Plugin-Admin
+          ref: ${{ inputs.source_ref }}
+          token: ${{ secrets.TOKEN_MGZ }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+      - run: npm run package
+      # The runtime contains private source; validate it here without publishing it.

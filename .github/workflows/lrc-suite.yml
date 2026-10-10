@@ -79,7 +79,7 @@ jobs:
           retention-days: 14
 
   web-api:
-    name: Web and authorization tests
+    name: Local lyric workspace tests
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
