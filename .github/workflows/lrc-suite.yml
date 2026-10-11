@@ -181,10 +181,13 @@ jobs:
       - name: Verify Windows install upgrade and uninstall / 验证安装升级与卸载
         if: runner.os == 'Windows' && inputs.sign_windows
         shell: pwsh
+        env:
+          LRC_WINDOWS_CA_CHAIN_PEM: ${{ secrets.LRC_WINDOWS_CA_CHAIN_PEM }}
         run: |
+          $trustPrivateCA = '${{ inputs.trust_private_ca }}' -eq 'true'
           $setup = @(Get-ChildItem -LiteralPath artifacts/windows-installer -Filter '*-Setup.exe')
           if ($setup.Count -ne 1) { throw 'Expected exactly one signed installer.' }
-          ./scripts/package-windows.test.ps1 -InstallerPath $setup[0].FullName -StageDirectory "artifacts/${{ matrix.artifact }}" -ExpectedSignerSha256 $env:LRC_WINDOWS_CERT_SHA256
+          ./scripts/package-windows.test.ps1 -InstallerPath $setup[0].FullName -StageDirectory "artifacts/${{ matrix.artifact }}" -ExpectedSignerSha256 $env:LRC_WINDOWS_CERT_SHA256 -TrustPrivateCA:$trustPrivateCA
       - name: Upload Windows installer / 上传 Windows 安装包
         if: runner.os == 'Windows' && inputs.sign_windows
         uses: actions/upload-artifact@v4
