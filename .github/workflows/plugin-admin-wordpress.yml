@@ -79,7 +79,7 @@ jobs:
           with zipfile.ZipFile(paths[0]) as archive:
               assert archive.testzip() is None, 'Invalid ZIP CRC'
               names = archive.namelist()
-              allowed = {'plugin-admin/plugin-admin.php', *('plugin-admin/includes/' + name + '.php' for name in ['Error','Store','ProductDetails','Platform','Security','Native','Theme','WordPress'])}
+              allowed = {'plugin-admin/plugin-admin.php', *('plugin-admin/includes/' + name + '.php' for name in ['Error','Store','ProductDetails','Platform','Security','Native','Products','Theme','WordPress'])}
               assert len(names) == len(set(names))
               assert all(name in allowed or name.startswith('plugin-admin/assets/') for name in names)
               assert all('/tests/' not in name and not name.endswith(('.pem','.key','.map')) and '/.' not in name for name in names)
