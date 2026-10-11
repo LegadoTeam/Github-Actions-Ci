@@ -162,7 +162,7 @@ jobs:
           set -euo pipefail
           failed=0
           for suite in platform native rest; do
-            if wp eval-file "$GITHUB_WORKSPACE/wordpress/plugin-admin/tests/run.php" "$GITHUB_WORKSPACE/wordpress/plugin-admin/tests/$suite.php" --path="$WP_ROOT" > "$RUNNER_TEMP/wp-$suite.log" 2>&1; then
+            if wp eval-file "$GITHUB_WORKSPACE/wordpress/plugin-admin/tests/run.php" "$GITHUB_WORKSPACE/wordpress/plugin-admin/tests/$suite.php" --use-include --path="$WP_ROOT" > "$RUNNER_TEMP/wp-$suite.log" 2>&1; then
               printf '%s=PASS\n' "$suite" | tee -a artifacts/wordpress-ci-summary/results.txt
               grep -E '^MGZ_TEST_PASS suite=(platform|native|rest)$' "$RUNNER_TEMP/wp-$suite.log" || true
               grep -E '^(Native WordPress|WordPress REST) integration passed \([0-9]+ checks\)\.$' "$RUNNER_TEMP/wp-$suite.log" | tee -a artifacts/wordpress-ci-summary/results.txt || true
@@ -172,6 +172,7 @@ jobs:
               echo 'Raw PHP/SQL diagnostics remain private on the disposable runner.'
               failed=1
             fi
+            grep -E '^MGZ_TEST_BOOTSTRAP php=[0-9]+\.[0-9]+\.[0-9]+$' "$RUNNER_TEMP/wp-$suite.log" | tee -a artifacts/wordpress-ci-summary/results.txt || true
           done
           exit "$failed"
       - name: Check the legacy native routes over loopback HTTP
