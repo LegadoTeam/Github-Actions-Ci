@@ -116,7 +116,7 @@ jobs:
     timeout-minutes: 50
     env:
       LRC_PUBLIC_KEY_HEX: ${{ vars.LRC_PUBLIC_KEY_HEX }}
-      LRC_API_ORIGIN: ${{ vars.LRC_API_ORIGIN || 'http://127.0.0.1:4318' }}
+      LRC_API_ORIGIN: ${{ vars.LRC_API_ORIGIN || 'https://mgz.hk' }}
       LRC_WINDOWS_CERT_SHA256: ${{ vars.LRC_WINDOWS_CERT_SHA256 }}
     steps:
       - name: Fetch private source / 拉取私有源码
