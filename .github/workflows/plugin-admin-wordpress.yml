@@ -145,6 +145,10 @@ jobs:
           password="$(openssl rand -hex 24)"
           echo "::add-mask::$password"
           wp core install --path="$WP_ROOT" --url=http://127.0.0.1:8888 --title='Disposable Plugin Admin CI' --admin_user=ci-administrator --admin_password="$password" --admin_email=ci@example.test --skip-email --quiet
+          mkdir -p "$WP_ROOT/wp-content/themes/ci-shell"
+          printf '/* Theme Name: Disposable CI Shell */\n' > "$WP_ROOT/wp-content/themes/ci-shell/style.css"
+          printf '<?php wp_head(); while (have_posts()) { the_post(); the_content(); } wp_footer();' > "$WP_ROOT/wp-content/themes/ci-shell/index.php"
+          wp theme activate ci-shell --path="$WP_ROOT" --quiet
           mkdir -p "$WP_ROOT/wp-content/plugins"
           unzip -q artifacts/plugin-admin-wordpress-*.zip -d "$WP_ROOT/wp-content/plugins"
           if ! wp plugin activate plugin-admin --path="$WP_ROOT" > "$RUNNER_TEMP/wp-activate.log" 2>&1; then
