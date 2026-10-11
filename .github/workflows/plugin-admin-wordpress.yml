@@ -165,10 +165,10 @@ jobs:
         run: |
           set -euo pipefail
           failed=0
-          for suite in platform native rest products; do
+          for suite in platform native rest products trials; do
             if wp eval-file "$GITHUB_WORKSPACE/wordpress/plugin-admin/tests/run.php" "$GITHUB_WORKSPACE/wordpress/plugin-admin/tests/$suite.php" --use-include --path="$WP_ROOT" > "$RUNNER_TEMP/wp-$suite.log" 2>&1; then
               printf '%s=PASS\n' "$suite" | tee -a artifacts/wordpress-ci-summary/results.txt
-              grep -E '^MGZ_TEST_PASS suite=(platform|native|rest|products)$' "$RUNNER_TEMP/wp-$suite.log" || true
+              grep -E '^MGZ_TEST_PASS suite=(platform|native|rest|products|trials)$' "$RUNNER_TEMP/wp-$suite.log" || true
               grep -E '^(Native WordPress|WordPress REST) integration passed \([0-9]+ checks\)\.$' "$RUNNER_TEMP/wp-$suite.log" | tee -a artifacts/wordpress-ci-summary/results.txt || true
             else
               printf '%s=FAIL\n' "$suite" | tee -a artifacts/wordpress-ci-summary/results.txt
