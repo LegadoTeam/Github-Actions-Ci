@@ -1,0 +1,62 @@
+name: Plugin offline activation - native interoperability
+
+on:
+  workflow_dispatch:
+    inputs:
+      plugin_ref:
+        description: '插件源码 SHA / Plugin source SHA'
+        required: true
+        type: string
+      admin_ref:
+        description: '授权平台源码 SHA / Authorization source SHA'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  offline:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-2022, macos-15]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - name: Fetch private plugin / 拉取私有插件
+        uses: actions/checkout@v4
+        with:
+          repository: mgz0227/Lyrics-Assistant
+          ref: ${{ inputs.plugin_ref }}
+          token: ${{ secrets.TOKEN_MGZ }}
+          persist-credentials: false
+          path: plugin-source
+      - name: Fetch private authorization platform / 拉取私有授权平台
+        uses: actions/checkout@v4
+        with:
+          repository: mgz0227/Plugin-Admin
+          ref: ${{ inputs.admin_ref }}
+          token: ${{ secrets.TOKEN_MGZ }}
+          persist-credentials: false
+          path: admin-source
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Configure Windows / 配置 Windows
+        if: runner.os == 'Windows'
+        run: cmake -S plugin-source/plugin -B build -G "Visual Studio 17 2022" -A x64 -DBUILD_TESTING=ON
+      - name: Configure macOS universal / 配置 macOS 双架构
+        if: runner.os == 'macOS'
+        run: cmake -S plugin-source/plugin -B build -G Xcode '-DCMAKE_OSX_ARCHITECTURES=arm64;x86_64' -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0 -DBUILD_TESTING=ON
+      - name: Build native offline tests / 编译原生离线测试
+        run: cmake --build build --config Release --target LyricueOfflineLicenseTests --parallel 2
+      - name: Test without network or database / 无网络数据库离线验证
+        run: ctest --test-dir build -C Release -R '^lyricue-offline-license$' --output-on-failure
+      - name: Verify server signatures on Windows / 验证服务端签名 Windows
+        if: runner.os == 'Windows'
+        run: node admin-source/server/tests/offline-native-smoke.mjs build/LyricueOfflineLicenseTests_artefacts/Release/LyricueOfflineLicenseTests.exe
+      - name: Verify server signatures on macOS / 验证服务端签名 macOS
+        if: runner.os == 'macOS'
+        run: node admin-source/server/tests/offline-native-smoke.mjs build/LyricueOfflineLicenseTests_artefacts/Release/LyricueOfflineLicenseTests
+      # Private sources, machine requests and licenses are never published as artifacts.
