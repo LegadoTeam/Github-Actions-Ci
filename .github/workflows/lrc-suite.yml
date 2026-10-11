@@ -178,7 +178,43 @@ jobs:
           lipo "artifacts/${{ matrix.artifact }}/LRC Suite.vst3/Contents/MacOS/LRC Suite" -verify_arch arm64 x86_64
           lipo "artifacts/${{ matrix.artifact }}/LRC Suite.component/Contents/MacOS/LRC Suite" -verify_arch arm64 x86_64
           lipo "artifacts/${{ matrix.artifact }}/LRC Suite.aaxplugin/Contents/MacOS/LRC Suite" -verify_arch arm64 x86_64
+          lipo "artifacts/${{ matrix.artifact }}/LRC Suite.app/Contents/MacOS/LRC Suite" -verify_arch arm64 x86_64
           ditto -c -k --sequesterRsrc --keepParent "artifacts/${{ matrix.artifact }}" "artifacts/${{ matrix.artifact }}.zip"
+      - name: Build system installer / 构建系统级安装包
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          version=$(sed -n 's/^LRC Suite //p' "artifacts/${{ matrix.artifact }}/BUILD-INFO.txt" | head -n 1)
+          package="artifacts/LRC-Suite-${version}-macOS-universal-unsigned.pkg"
+          bash scripts/package-macos.sh "artifacts/${{ matrix.artifact }}" "$package"
+          bash scripts/package-macos.test.sh "$package" "artifacts/${{ matrix.artifact }}"
+          echo "LRC_MAC_INSTALLER=$package" >> "$GITHUB_ENV"
+      - name: Verify system installation / 验证系统目录安装
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          # This is a disposable GitHub-hosted runner, never a customer machine.
+          sudo /usr/sbin/installer -pkg "$LRC_MAC_INSTALLER" -target /
+          bundles=('LRC Suite.app' 'LRC Suite.vst3' 'LRC Suite.component' 'LRC Suite.aaxplugin')
+          paths=('/Applications' '/Library/Audio/Plug-Ins/VST3' '/Library/Audio/Plug-Ins/Components' '/Library/Application Support/Avid/Audio/Plug-Ins')
+          for index in 0 1 2 3; do
+            installed="${paths[$index]}/${bundles[$index]}"
+            test -d "$installed"
+            diff -qr "artifacts/${{ matrix.artifact }}/${bundles[$index]}" "$installed"
+            test "$(stat -f '%u:%g' "$installed")" = '0:0'
+          done
+          /usr/sbin/pkgutil --pkg-info studio.lrcsuite.installer
+          ditto -c -k --sequesterRsrc --keepParent "$LRC_MAC_INSTALLER" "artifacts/${{ matrix.artifact }}-installer.zip"
+      - name: Upload macOS installer / 上传 macOS 安装包
+        if: runner.os == 'macOS'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}-installer-unsigned
+          path: artifacts/${{ matrix.artifact }}-installer.zip
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 14
       - name: Upload builds / 上传构建包
         uses: actions/upload-artifact@v4
         with:
