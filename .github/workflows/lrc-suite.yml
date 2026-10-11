@@ -167,6 +167,33 @@ jobs:
           'LRC_WINDOWS_AUTHENTICODE_SIGNED=true' | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
       - name: Stage binaries only / 仅打包二进制
         run: node scripts/package-native.mjs build ${{ matrix.artifact }}
+      - name: Build signed Windows installer / 构建已签名 Windows 安装包
+        if: runner.os == 'Windows' && inputs.sign_windows
+        shell: pwsh
+        env:
+          LRC_WINDOWS_PFX_BASE64: ${{ secrets.LRC_WINDOWS_PFX_BASE64 }}
+          LRC_WINDOWS_PFX_PASSWORD: ${{ secrets.LRC_WINDOWS_PFX_PASSWORD }}
+          LRC_WINDOWS_CA_CHAIN_PEM: ${{ secrets.LRC_WINDOWS_CA_CHAIN_PEM }}
+          LRC_WINDOWS_TIMESTAMP_URL: ${{ vars.LRC_WINDOWS_TIMESTAMP_URL }}
+        run: |
+          $trustPrivateCA = '${{ inputs.trust_private_ca }}' -eq 'true'
+          ./scripts/package-windows.ps1 -StageDirectory "artifacts/${{ matrix.artifact }}" -OutputDirectory artifacts/windows-installer -TrustPrivateCA:$trustPrivateCA
+      - name: Verify Windows install upgrade and uninstall / 验证安装升级与卸载
+        if: runner.os == 'Windows' && inputs.sign_windows
+        shell: pwsh
+        run: |
+          $setup = @(Get-ChildItem -LiteralPath artifacts/windows-installer -Filter '*-Setup.exe')
+          if ($setup.Count -ne 1) { throw 'Expected exactly one signed installer.' }
+          ./scripts/package-windows.test.ps1 -InstallerPath $setup[0].FullName -StageDirectory "artifacts/${{ matrix.artifact }}" -ExpectedSignerSha256 $env:LRC_WINDOWS_CERT_SHA256
+      - name: Upload Windows installer / 上传 Windows 安装包
+        if: runner.os == 'Windows' && inputs.sign_windows
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}-installer-authenticode
+          path: artifacts/windows-installer/*-Setup.exe
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 14
       - name: Archive Windows
         if: runner.os == 'Windows'
         shell: pwsh
@@ -197,7 +224,7 @@ jobs:
           # This is a disposable GitHub-hosted runner, never a customer machine.
           sudo /usr/sbin/installer -pkg "$LRC_MAC_INSTALLER" -target /
           bundles=('LRC Suite.app' 'LRC Suite.vst3' 'LRC Suite.component' 'LRC Suite.aaxplugin')
-          paths=('/Applications' '/Library/Audio/Plug-Ins/VST3' '/Library/Audio/Plug-Ins/Components' '/Library/Application Support/Avid/Audio/Plug-Ins')
+          paths=('/Applications' '/Library/Audio/Plug-Ins/VST3/NyaSama Audio' '/Library/Audio/Plug-Ins/Components' '/Library/Application Support/Avid/Audio/Plug-Ins/NyaSama Audio')
           for index in 0 1 2 3; do
             installed="${paths[$index]}/${bundles[$index]}"
             test -d "$installed"
