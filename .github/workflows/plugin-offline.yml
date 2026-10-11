@@ -51,7 +51,7 @@ jobs:
         run: cmake -S plugin-source/plugin -B build -G Xcode '-DCMAKE_OSX_ARCHITECTURES=arm64;x86_64' -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0 -DBUILD_TESTING=ON
       - name: Build native offline tests / 编译原生离线测试
         run: cmake --build build --config Release --target LyricueOfflineLicenseTests --parallel 2
-      - name: Test without network or database / 无网络数据库离线验证
+      - name: Offline and loopback tests / 离线与本机回环验证
         run: ctest --test-dir build -C Release -R '^lyricue-offline-license$' --output-on-failure
       - name: Verify server signatures on Windows / 验证服务端签名 Windows
         if: runner.os == 'Windows'
