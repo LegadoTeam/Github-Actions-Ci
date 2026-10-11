@@ -179,29 +179,52 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          phase=permalinks
+          trap 'code=$?; printf "loopback-shell=FAIL phase:%s exit:%s\n" "$phase" "$code" | tee -a artifacts/wordpress-ci-summary/results.txt' ERR
+          wp option update permalink_structure '/%postname%/' --quiet --path="$WP_ROOT" > "$RUNNER_TEMP/wp-permalinks.log" 2>&1
+          phase=rewrite
           wp rewrite flush --path="$WP_ROOT" > "$RUNNER_TEMP/wp-rewrite.log" 2>&1
+          printf 'loopback-setup=PASS rewrite\n' >> artifacts/wordpress-ci-summary/results.txt
+          phase=server
           wp server --host=127.0.0.1 --port=8888 --path="$WP_ROOT" > "$RUNNER_TEMP/wp-http.log" 2>&1 &
           server_pid=$!
           trap 'kill "$server_pid" 2>/dev/null || true; wait "$server_pid" 2>/dev/null || true' EXIT
+          sleep 0.3
+          kill -0 "$server_pid"
+          phase=requests
           node --input-type=module - <<'JS'
-          import assert from 'node:assert/strict';
+          import {appendFileSync} from 'node:fs';
           const origin='http://127.0.0.1:8888';
-          let ready=false;
-          for(let i=0;i<30;i++) {try{const response=await fetch(`${origin}/?rest_route=/mgz-plugin-admin/v1/health`,{signal:AbortSignal.timeout(2000)});if(response.ok){ready=true;break;}}catch{}await new Promise(resolve=>setTimeout(resolve,500));}
-          assert(ready,'Disposable WordPress HTTP server did not become ready');
-          const canonical=await fetch(`${origin}/?rest_route=/mgz-plugin-admin/v1/public-key`);
-          const legacy=await fetch(`${origin}/api/public-key`);
-          assert.equal(canonical.status,200,'Canonical public-key status');
-          assert.equal(legacy.status,200,'Legacy public-key status');
-          const expected=await canonical.json(),actual=await legacy.json();
-          assert(actual.algorithm==='RSA-SHA256'&&actual.modulusHex===expected.modulusHex,'Public key routes disagree');
-          for(const path of ['/api/plugin/check','/?rest_route=/mgz-plugin-admin/v1/plugin/check']) {
-            const response=await fetch(origin+path,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}',signal:AbortSignal.timeout(5000)});
-            assert.equal(response.status,400,'Unauthenticated native check must reach JSON validation');
+          const report=line=>{console.log(line);appendFileSync('artifacts/wordpress-ci-summary/results.txt',line+'\n');};
+          function check(condition,label){if(!condition)throw new Error(label);}
+          async function json(label,path,status,options={}) {
+            let response;
+            try{response=await fetch(origin+path,{...options,signal:AbortSignal.timeout(5000)});}catch{throw new Error(label+'-transport');}
+            const text=await response.text();
+            report('loopback-response='+label+' status:'+response.status+' bytes:'+Buffer.byteLength(text));
+            check(response.status===status,label+'-status');
+            check(/application\/json/i.test(response.headers.get('content-type')||''),label+'-content-type');
+            let data;try{data=JSON.parse(text);}catch{throw new Error(label+'-json');}
+            return data;
           }
-          console.log('Loopback HTTP legacy and canonical routes passed (4 requests).');
+          try {
+            let ready=false;
+            for(let i=0;i<30;i++) {try{const response=await fetch(origin+'/?rest_route=/mgz-plugin-admin/v1/health',{signal:AbortSignal.timeout(2000)});if(response.ok&&(await response.json()).status==='ok'){ready=true;break;}}catch{}await new Promise(resolve=>setTimeout(resolve,500));}
+            check(ready,'server-readiness');
+            const expected=await json('canonical-key','/?rest_route=/mgz-plugin-admin/v1/public-key',200);
+            const actual=await json('legacy-key','/api/public-key',200);
+            check(actual.algorithm==='RSA-SHA256'&&actual.modulusHex===expected.modulusHex,'public-key-mismatch');
+            for(const [label,path] of [['legacy-check','/api/plugin/check'],['canonical-check','/?rest_route=/mgz-plugin-admin/v1/plugin/check']]) {
+              await json(label,path,400,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+            }
+            const missingType=await json('missing-content-type','/api/plugin/activate',415,{method:'POST',body:new Uint8Array([123,125])});
+            check(missingType.error?.code==='JSON_REQUIRED','missing-content-type-code');
+            report('loopback-http=PASS requests:5');
+          } catch(error) {
+            const label=/^[a-z-]+$/.test(error.message)?error.message:'unexpected';
+            report('loopback-http=FAIL check:'+label);process.exitCode=1;
+          }
           JS
-          printf 'loopback-http=PASS requests:4\n' >> artifacts/wordpress-ci-summary/results.txt
       # The ZIP contains private PHP source. Never upload it, raw logs, SQL,
       # wp-config.php, keys or fixtures to this public Actions repository.
       - name: Upload sanitized test statistics only
