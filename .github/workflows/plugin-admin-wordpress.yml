@@ -219,7 +219,16 @@ jobs:
             }
             const missingType=await json('missing-content-type','/api/plugin/activate',415,{method:'POST',body:new Uint8Array([123,125])});
             check(missingType.error?.code==='JSON_REQUIRED','missing-content-type-code');
-            report('loopback-http=PASS requests:5');
+            for(const route of ['plugins','downloads']) {
+              const response=await fetch(origin+'/plugin-center/'+route,{redirect:'manual',signal:AbortSignal.timeout(5000)});
+              const html=await response.text();
+              check(response.status===200,'center-path-status');
+              check(html.includes('id="mgz-plugin-admin"')&&html.includes('"initialRoute":"'+route+'"'),'center-path-bootstrap');
+              report('center-path=PASS route:'+route);
+            }
+            const unknown=await fetch(origin+'/plugin-center/not-a-valid-route',{redirect:'manual',signal:AbortSignal.timeout(5000)});
+            check(unknown.status===404,'center-unknown-path');
+            report('loopback-http=PASS requests:8');
           } catch(error) {
             const label=/^[a-z-]+$/.test(error.message)?error.message:'unexpected';
             report('loopback-http=FAIL check:'+label);process.exitCode=1;
