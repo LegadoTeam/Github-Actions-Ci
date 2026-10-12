@@ -36,13 +36,13 @@ jobs:
     timeout-minutes: 35
     steps:
       - name: Fetch private source / 拉取私有源码
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7.0.1
         with:
           repository: mgz0227/Lyrics-Assistant
           ref: ${{ inputs.source_ref }}
           token: ${{ secrets.TOKEN_MGZ }}
           persist-credentials: false
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7.0.0
         with:
           python-version: '3.12'
           cache: pip
@@ -60,7 +60,7 @@ jobs:
       - name: Archive macOS language pack / 打包 macOS 语言包
         if: runner.os == 'macOS'
         run: ditto -c -k --sequesterRsrc --keepParent offline/dist/lrc-language-helper LRC-Language-Pack-${{ matrix.platform }}.zip
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7.0.2
         with:
           name: LRC-Language-Pack-${{ matrix.platform }}
           path: LRC-Language-Pack-${{ matrix.platform }}.zip
@@ -74,13 +74,13 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Fetch private source / 拉取私有源码
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7.0.1
         with:
           repository: mgz0227/Lyrics-Assistant
           ref: ${{ inputs.source_ref }}
           token: ${{ secrets.TOKEN_MGZ }}
           persist-credentials: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7.1.0
         with:
           node-version: 24
           cache: npm
@@ -110,15 +110,16 @@ jobs:
       LRC_WINDOWS_AUTHENTICODE_SIGNED: 'false'
     steps:
       - name: Fetch private source / 拉取私有源码
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7.0.1
         with:
           repository: mgz0227/Lyrics-Assistant
           ref: ${{ inputs.source_ref }}
           token: ${{ secrets.TOKEN_MGZ }}
           persist-credentials: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7.1.0
         with:
           node-version: 24
+          package-manager-cache: false
       - name: Configure Windows
         if: runner.os == 'Windows'
         shell: pwsh
@@ -155,7 +156,7 @@ jobs:
           ./scripts/package-windows.test.ps1 -InstallerPath $setup[0].FullName -StageDirectory "artifacts/${{ matrix.artifact }}" -Unsigned
       - name: Upload Windows installer / 上传 Windows 安装包
         if: runner.os == 'Windows'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: ${{ matrix.artifact }}-installer-unsigned
           path: artifacts/windows-installer/*-Setup.exe
@@ -203,7 +204,7 @@ jobs:
           ditto -c -k --sequesterRsrc --keepParent "$LRC_MAC_INSTALLER" "artifacts/${{ matrix.artifact }}-installer.zip"
       - name: Upload macOS installer / 上传 macOS 安装包
         if: runner.os == 'macOS'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: ${{ matrix.artifact }}-installer-unsigned
           path: artifacts/${{ matrix.artifact }}-installer.zip
@@ -211,7 +212,7 @@ jobs:
           if-no-files-found: error
           retention-days: 14
       - name: Upload builds / 上传构建包
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: ${{ matrix.artifact }}-unsigned
           path: artifacts/${{ matrix.artifact }}.zip
