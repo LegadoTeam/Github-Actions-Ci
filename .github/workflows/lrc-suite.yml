@@ -91,10 +91,14 @@ jobs:
       - run: npm run test:e2e
 
   native:
-    name: ${{ matrix.name }}
+    name: ${{ matrix.name }} - ${{ matrix.variant }}
     strategy:
       fail-fast: false
       matrix:
+        os: [windows-2022, macos-14]
+        variant: [Development, Production]
+        # A protected macOS build requires a real Apple publishing identity.
+        exclude: ${{ fromJSON(vars.LRC_MAC_TEAM_ID == '' && '[{"os":"macos-14","variant":"Production"}]' || '[]') }}
         include:
           - os: windows-2022
             name: Windows x64 - VST3 AAX Standalone
@@ -102,12 +106,20 @@ jobs:
           - os: macos-14
             name: macOS Universal - VST3 AU AAX Standalone
             artifact: LRC-Suite-macOS-universal
+          - variant: Development
+            integrity: 'OFF'
+            testing: 'ON'
+          - variant: Production
+            integrity: 'ON'
+            testing: 'OFF'
     runs-on: ${{ matrix.os }}
     timeout-minutes: 50
     env:
       LRC_PUBLIC_KEY_HEX: ${{ vars.LRC_PUBLIC_KEY_HEX }}
       LRC_API_ORIGIN: ${{ vars.LRC_API_ORIGIN || 'https://mgz.hk' }}
       LRC_WINDOWS_AUTHENTICODE_SIGNED: 'false'
+      LRC_WINDOWS_CERT_SHA256: ${{ vars.LRC_WINDOWS_CERT_SHA256 }}
+      LRC_MAC_TEAM_ID: ${{ vars.LRC_MAC_TEAM_ID }}
     steps:
       - name: Fetch private source / 拉取私有源码
         uses: actions/checkout@v7.0.1
@@ -120,18 +132,23 @@ jobs:
         with:
           node-version: 24
           package-manager-cache: false
+      - name: Verify packaging variants / 验证双版本打包
+        run: node --test scripts/package-native.test.mjs
+      - name: Report pending macOS production identity / 说明 macOS 正式版缺少签名身份
+        if: runner.os == 'macOS' && matrix.variant == 'Development' && env.LRC_MAC_TEAM_ID == ''
+        run: echo 'macOS Production 未构建：请在仓库变量配置 LRC_MAC_TEAM_ID，后续构建会自动加入受保护正式版。/ Set LRC_MAC_TEAM_ID to enable the protected macOS Production build.' >> "$GITHUB_STEP_SUMMARY"
       - name: Configure Windows
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           $PSNativeCommandUseErrorActionPreference = $true
-          cmake -S plugin -B build -G 'Visual Studio 17 2022' -A x64 -DLYRICUE_BUILD_AAX=ON "-DLYRICUE_AAX_SDK=$pwd/SDK/aax" "-DLYRICUE_PUBLIC_KEY_HEX=$env:LRC_PUBLIC_KEY_HEX" "-DLYRICUE_SERVER_URL=$env:LRC_API_ORIGIN" -DLRC_ENFORCE_INTEGRITY=OFF -DBUILD_TESTING=ON
+          cmake -S plugin -B build -G 'Visual Studio 17 2022' -A x64 -DLYRICUE_BUILD_AAX=ON "-DLYRICUE_AAX_SDK=$pwd/SDK/aax" "-DLYRICUE_PUBLIC_KEY_HEX=$env:LRC_PUBLIC_KEY_HEX" "-DLYRICUE_SERVER_URL=$env:LRC_API_ORIGIN" -DLYRICUE_DEV_LICENSE=OFF -DLRC_ENFORCE_INTEGRITY=${{ matrix.integrity }} "-DLRC_WINDOWS_CERT_SHA256=$env:LRC_WINDOWS_CERT_SHA256" -DBUILD_TESTING=${{ matrix.testing }}
       - name: Configure macOS universal / 配置双架构
         if: runner.os == 'macOS'
         shell: bash
         run: |
-          cmake -S plugin -B build -G Xcode -DCMAKE_OSX_ARCHITECTURES='arm64;x86_64' -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0 -DLYRICUE_BUILD_AAX=ON "-DLYRICUE_AAX_SDK=$PWD/SDK/aax" "-DLYRICUE_PUBLIC_KEY_HEX=$LRC_PUBLIC_KEY_HEX" "-DLYRICUE_SERVER_URL=$LRC_API_ORIGIN" -DLRC_ENFORCE_INTEGRITY=OFF -DBUILD_TESTING=ON
+          cmake -S plugin -B build -G Xcode -DCMAKE_OSX_ARCHITECTURES='arm64;x86_64' -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0 -DLYRICUE_BUILD_AAX=ON "-DLYRICUE_AAX_SDK=$PWD/SDK/aax" "-DLYRICUE_PUBLIC_KEY_HEX=$LRC_PUBLIC_KEY_HEX" "-DLYRICUE_SERVER_URL=$LRC_API_ORIGIN" -DLYRICUE_DEV_LICENSE=OFF -DLRC_ENFORCE_INTEGRITY=${{ matrix.integrity }} "-DLRC_MAC_TEAM_ID=$LRC_MAC_TEAM_ID" -DBUILD_TESTING=${{ matrix.testing }}
       - name: Build / 编译
         run: cmake --build build --config Release --parallel 2
       - name: Signing tool negative checks / 签名工具拒绝路径检查
@@ -139,26 +156,27 @@ jobs:
         shell: pwsh
         run: ./scripts/sign-windows.test.ps1
       - name: Native tests / 原生测试
+        if: matrix.variant == 'Development'
         run: ctest --test-dir build -C Release --output-on-failure
       - name: Stage binaries only / 仅打包二进制
-        run: node scripts/package-native.mjs build ${{ matrix.artifact }}
+        run: node scripts/package-native.mjs build ${{ matrix.artifact }}-${{ matrix.variant }}
       - name: Build unsigned Windows installer / 构建未签名 Windows 安装包
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          ./scripts/package-windows.ps1 -StageDirectory "artifacts/${{ matrix.artifact }}" -OutputDirectory artifacts/windows-installer
+          ./scripts/package-windows.ps1 -StageDirectory "artifacts/${{ matrix.artifact }}-${{ matrix.variant }}" -OutputDirectory artifacts/windows-installer
       - name: Verify Windows install upgrade and uninstall / 验证安装升级与卸载
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
           $setup = @(Get-ChildItem -LiteralPath artifacts/windows-installer -Filter '*-Setup.exe')
           if ($setup.Count -ne 1) { throw 'Expected exactly one unsigned installer.' }
-          ./scripts/package-windows.test.ps1 -InstallerPath $setup[0].FullName -StageDirectory "artifacts/${{ matrix.artifact }}" -Unsigned
+          ./scripts/package-windows.test.ps1 -InstallerPath $setup[0].FullName -StageDirectory "artifacts/${{ matrix.artifact }}-${{ matrix.variant }}" -Unsigned
       - name: Upload Windows installer / 上传 Windows 安装包
         if: runner.os == 'Windows'
         uses: actions/upload-artifact@v7.0.2
         with:
-          name: ${{ matrix.artifact }}-installer-unsigned
+          name: ${{ matrix.artifact }}-${{ matrix.variant }}-installer-unsigned
           path: artifacts/windows-installer/*-Setup.exe
           compression-level: 0
           if-no-files-found: error
@@ -166,24 +184,24 @@ jobs:
       - name: Archive Windows
         if: runner.os == 'Windows'
         shell: pwsh
-        run: Compress-Archive -LiteralPath "artifacts/${{ matrix.artifact }}" -DestinationPath "artifacts/${{ matrix.artifact }}.zip"
+        run: Compress-Archive -LiteralPath "artifacts/${{ matrix.artifact }}-${{ matrix.variant }}" -DestinationPath "artifacts/${{ matrix.artifact }}-${{ matrix.variant }}.zip"
       - name: Check universal binaries and archive macOS
         if: runner.os == 'macOS'
         shell: bash
         run: |
-          lipo "artifacts/${{ matrix.artifact }}/LRC Suite.vst3/Contents/MacOS/LRC Suite" -verify_arch arm64 x86_64
-          lipo "artifacts/${{ matrix.artifact }}/LRC Suite.component/Contents/MacOS/LRC Suite" -verify_arch arm64 x86_64
-          lipo "artifacts/${{ matrix.artifact }}/LRC Suite.aaxplugin/Contents/MacOS/LRC Suite" -verify_arch arm64 x86_64
-          lipo "artifacts/${{ matrix.artifact }}/LRC Suite.app/Contents/MacOS/LRC Suite" -verify_arch arm64 x86_64
-          ditto -c -k --sequesterRsrc --keepParent "artifacts/${{ matrix.artifact }}" "artifacts/${{ matrix.artifact }}.zip"
+          lipo "artifacts/${{ matrix.artifact }}-${{ matrix.variant }}/LRC Suite.vst3/Contents/MacOS/LRC Suite" -verify_arch arm64 x86_64
+          lipo "artifacts/${{ matrix.artifact }}-${{ matrix.variant }}/LRC Suite.component/Contents/MacOS/LRC Suite" -verify_arch arm64 x86_64
+          lipo "artifacts/${{ matrix.artifact }}-${{ matrix.variant }}/LRC Suite.aaxplugin/Contents/MacOS/LRC Suite" -verify_arch arm64 x86_64
+          lipo "artifacts/${{ matrix.artifact }}-${{ matrix.variant }}/LRC Suite.app/Contents/MacOS/LRC Suite" -verify_arch arm64 x86_64
+          ditto -c -k --sequesterRsrc --keepParent "artifacts/${{ matrix.artifact }}-${{ matrix.variant }}" "artifacts/${{ matrix.artifact }}-${{ matrix.variant }}.zip"
       - name: Build system installer / 构建系统级安装包
         if: runner.os == 'macOS'
         shell: bash
         run: |
-          version=$(sed -n 's/^LRC Suite //p' "artifacts/${{ matrix.artifact }}/BUILD-INFO.txt" | head -n 1)
-          package="artifacts/LRC-Suite-${version}-macOS-universal-unsigned.pkg"
-          bash scripts/package-macos.sh "artifacts/${{ matrix.artifact }}" "$package"
-          bash scripts/package-macos.test.sh "$package" "artifacts/${{ matrix.artifact }}"
+          version=$(sed -n 's/^LRC Suite //p' "artifacts/${{ matrix.artifact }}-${{ matrix.variant }}/BUILD-INFO.txt" | head -n 1)
+          package="artifacts/LRC-Suite-${version}-macOS-universal-${{ matrix.variant }}-unsigned.pkg"
+          bash scripts/package-macos.sh "artifacts/${{ matrix.artifact }}-${{ matrix.variant }}" "$package"
+          bash scripts/package-macos.test.sh "$package" "artifacts/${{ matrix.artifact }}-${{ matrix.variant }}"
           echo "LRC_MAC_INSTALLER=$package" >> "$GITHUB_ENV"
       - name: Verify system installation / 验证系统目录安装
         if: runner.os == 'macOS'
@@ -197,24 +215,24 @@ jobs:
           for index in 0 1 2 3; do
             installed="${paths[$index]}/${bundles[$index]}"
             test -d "$installed"
-            diff -qr "artifacts/${{ matrix.artifact }}/${bundles[$index]}" "$installed"
+            diff -qr "artifacts/${{ matrix.artifact }}-${{ matrix.variant }}/${bundles[$index]}" "$installed"
             test "$(stat -f '%u:%g' "$installed")" = '0:0'
           done
           /usr/sbin/pkgutil --pkg-info studio.lrcsuite.installer
-          ditto -c -k --sequesterRsrc --keepParent "$LRC_MAC_INSTALLER" "artifacts/${{ matrix.artifact }}-installer.zip"
+          ditto -c -k --sequesterRsrc --keepParent "$LRC_MAC_INSTALLER" "artifacts/${{ matrix.artifact }}-${{ matrix.variant }}-installer.zip"
       - name: Upload macOS installer / 上传 macOS 安装包
         if: runner.os == 'macOS'
         uses: actions/upload-artifact@v7.0.2
         with:
-          name: ${{ matrix.artifact }}-installer-unsigned
-          path: artifacts/${{ matrix.artifact }}-installer.zip
+          name: ${{ matrix.artifact }}-${{ matrix.variant }}-installer-unsigned
+          path: artifacts/${{ matrix.artifact }}-${{ matrix.variant }}-installer.zip
           compression-level: 0
           if-no-files-found: error
           retention-days: 14
       - name: Upload builds / 上传构建包
         uses: actions/upload-artifact@v7.0.2
         with:
-          name: ${{ matrix.artifact }}-unsigned
-          path: artifacts/${{ matrix.artifact }}.zip
+          name: ${{ matrix.artifact }}-${{ matrix.variant }}-unsigned
+          path: artifacts/${{ matrix.artifact }}-${{ matrix.variant }}.zip
           if-no-files-found: error
           retention-days: 14
