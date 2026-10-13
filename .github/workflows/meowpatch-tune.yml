@@ -1,0 +1,135 @@
+name: MeowPatch Tune - Windows and macOS
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_ref:
+        description: 'MeowPatch-Tune 私库完整提交 SHA / Full private source commit SHA'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: meowpatch-tune-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  native:
+    name: ${{ matrix.platform }} - ${{ matrix.variant }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-2022
+            platform: Windows-x64
+            variant: Development
+            integrity: 'OFF'
+          - os: windows-2022
+            platform: Windows-x64
+            variant: Production
+            integrity: 'ON'
+          - os: macos-14
+            platform: macOS-universal
+            variant: Development
+            integrity: 'OFF'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    env:
+      SOURCE_REF: ${{ inputs.source_ref }}
+      MEOW_WINDOWS_CERT_SHA256: ${{ vars.LRC_WINDOWS_CERT_SHA256 }}
+    steps:
+      - name: Validate source identity / 检查完整提交标识
+        shell: bash
+        run: |
+          [[ "$SOURCE_REF" =~ ^[a-f0-9]{40}$ ]] || { echo 'source_ref must be a complete lowercase commit SHA.'; exit 1; }
+      - name: Fetch private source / 拉取私有源码
+        uses: actions/checkout@v7.0.1
+        with:
+          repository: mgz0227/MeowPatch-Tune
+          ref: ${{ inputs.source_ref }}
+          token: ${{ secrets.TOKEN_MGZ }}
+          persist-credentials: false
+      - name: Verify checked out commit / 核对实际提交
+        shell: bash
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_REF"
+      - name: Fetch existing licensed AAX SDK / 复用现有私库 AAX SDK
+        uses: actions/checkout@v7.0.1
+        with:
+          repository: mgz0227/Lyrics-Assistant
+          ref: 36841e4e6626ec436841935abf04cfcb4632a15b
+          token: ${{ secrets.TOKEN_MGZ }}
+          persist-credentials: false
+          path: vendor-sdk
+          sparse-checkout: SDK/aax
+      - name: Build script prerequisite checks / 构建脚本前置检查
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/build.test.ps1
+      - name: Configure Windows / 配置 Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
+          cmake -S . -B build -G 'Visual Studio 17 2022' -A x64 -DMEOW_BUILD_AAX=ON "-DMEOW_AAX_SDK=$pwd/vendor-sdk/SDK/aax" -DMEOW_ENFORCE_INTEGRITY=${{ matrix.integrity }} "-DMEOW_WINDOWS_CERT_SHA256=$env:MEOW_WINDOWS_CERT_SHA256" -DBUILD_TESTING=ON
+      - name: Configure macOS Universal / 配置 macOS 双架构
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          cmake -S . -B build -G Xcode -DCMAKE_OSX_ARCHITECTURES='arm64;x86_64' -DCMAKE_OSX_DEPLOYMENT_TARGET=13.3 -DMEOW_BUILD_AAX=ON "-DMEOW_AAX_SDK=$PWD/vendor-sdk/SDK/aax" -DMEOW_ENFORCE_INTEGRITY=OFF -DBUILD_TESTING=ON
+      - name: Build all formats and tests / 编译插件及测试
+        run: cmake --build build --config Release --parallel 2
+      - name: Native regression tests / 原生回归测试
+        run: ctest --test-dir build -C Release --output-on-failure
+      - name: Package Windows bundles / 打包 Windows 插件
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          ARTIFACT_NAME: MeowPatch-Tune-${{ matrix.platform }}-${{ matrix.variant }}-unsigned
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $stage = Join-Path 'artifacts' $env:ARTIFACT_NAME
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+          $built = 'build/MeowPatchTune_artefacts/Release'
+          foreach ($format in @('VST3', 'AAX', 'Standalone')) {
+            $source = Join-Path $built $format
+            if (-not (Test-Path -LiteralPath $source -PathType Container)) { throw "Missing $format output." }
+            Copy-Item -LiteralPath $source -Destination $stage -Recurse
+          }
+          foreach ($binary in @('VST3/MeowPatch Tune.vst3/Contents/x86_64-win/MeowPatch Tune.vst3', 'AAX/MeowPatch Tune.aaxplugin/Contents/x64/MeowPatch Tune.aaxplugin', 'Standalone/MeowPatch Tune.exe')) {
+            $path = Join-Path $stage $binary
+            if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "Missing expected binary: $binary" }
+            if (-not (Test-Path -LiteralPath (Join-Path (Split-Path -Parent $path) 'onnxruntime.dll') -PathType Leaf)) { throw "Missing bundled AI runtime: $binary" }
+            if ((Get-AuthenticodeSignature -LiteralPath $path).Status -ne 'NotSigned') { throw "Product binary must remain unsigned for local signing: $binary" }
+          }
+          @("NyaSama Audio - MeowPatch Tune", "Source: $env:SOURCE_REF", "Variant: ${{ matrix.variant }}", 'Account authorization remains required.', 'Unsigned: local publisher/PACE signing is not performed by CI.', 'Production requires a trusted publisher signature before processing.') | Set-Content -LiteralPath (Join-Path $stage 'BUILD-INFO.txt') -Encoding utf8
+          Compress-Archive -LiteralPath $stage -DestinationPath "artifacts/$env:ARTIFACT_NAME.zip"
+      - name: Package and verify macOS Universal / 打包及检查 macOS 双架构
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          ARTIFACT_NAME: MeowPatch-Tune-${{ matrix.platform }}-${{ matrix.variant }}-unsigned
+        run: |
+          set -euo pipefail
+          stage="artifacts/$ARTIFACT_NAME"
+          mkdir -p "$stage"
+          for format in VST3 AU AAX Standalone; do
+            test -d "build/MeowPatchTune_artefacts/Release/$format"
+            ditto "build/MeowPatchTune_artefacts/Release/$format" "$stage/$format"
+          done
+          for bundle in 'VST3/MeowPatch Tune.vst3' 'AU/MeowPatch Tune.component' 'AAX/MeowPatch Tune.aaxplugin' 'Standalone/MeowPatch Tune.app'; do
+            lipo "$stage/$bundle/Contents/MacOS/MeowPatch Tune" -verify_arch arm64 x86_64
+            lipo "$stage/$bundle/Contents/MacOS/libonnxruntime.1.22.0.dylib" -verify_arch arm64 x86_64
+          done
+          printf '%s\n' 'NyaSama Audio - MeowPatch Tune' "Source: $SOURCE_REF" 'Variant: Development' 'Account authorization remains required.' 'Apple/PACE publishing signatures and notarization are not performed by CI.' > "$stage/BUILD-INFO.txt"
+          ditto -c -k --sequesterRsrc --keepParent "$stage" "artifacts/$ARTIFACT_NAME.zip"
+      - name: Upload plugin bundles / 上传插件包
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: MeowPatch-Tune-${{ matrix.platform }}-${{ matrix.variant }}-unsigned
+          path: artifacts/MeowPatch-Tune-${{ matrix.platform }}-${{ matrix.variant }}-unsigned.zip
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 14
