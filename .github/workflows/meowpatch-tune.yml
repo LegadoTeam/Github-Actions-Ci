@@ -84,10 +84,17 @@ jobs:
           $stage = Join-Path 'artifacts' $env:ARTIFACT_NAME
           New-Item -ItemType Directory -Force -Path $stage | Out-Null
           $built = 'build/MeowPatchTune_artefacts/Release'
-          foreach ($format in @('VST3', 'AAX', 'Standalone')) {
-            $source = Join-Path $built $format
-            if (-not (Test-Path -LiteralPath $source -PathType Container)) { throw "Missing $format output." }
-            Copy-Item -LiteralPath $source -Destination $stage -Recurse
+          foreach ($bundle in @('VST3/MeowPatch Tune.vst3', 'AAX/MeowPatch Tune.aaxplugin')) {
+            $source = Join-Path $built $bundle
+            if (-not (Test-Path -LiteralPath $source -PathType Container)) { throw "Missing $bundle output." }
+            $destination = Join-Path $stage $bundle
+            New-Item -ItemType Directory -Force -Path (Split-Path -Parent $destination) | Out-Null
+            Copy-Item -LiteralPath $source -Destination $destination -Recurse
+          }
+          $standalone = Join-Path $stage 'Standalone'
+          New-Item -ItemType Directory -Force -Path $standalone | Out-Null
+          foreach ($item in @('MeowPatch Tune.exe', 'onnxruntime.dll', 'MeowPatch-Licenses')) {
+            Copy-Item -LiteralPath (Join-Path "$built/Standalone" $item) -Destination $standalone -Recurse
           }
           foreach ($binary in @('VST3/MeowPatch Tune.vst3/Contents/x86_64-win/MeowPatch Tune.vst3', 'AAX/MeowPatch Tune.aaxplugin/Contents/x64/MeowPatch Tune.aaxplugin', 'Standalone/MeowPatch Tune.exe')) {
             $path = Join-Path $stage $binary
@@ -106,11 +113,9 @@ jobs:
           set -euo pipefail
           stage="artifacts/$ARTIFACT_NAME"
           mkdir -p "$stage"
-          for format in VST3 AU AAX Standalone; do
-            test -d "build/MeowPatchTune_artefacts/Release/$format"
-            ditto "build/MeowPatchTune_artefacts/Release/$format" "$stage/$format"
-          done
           for bundle in 'VST3/MeowPatch Tune.vst3' 'AU/MeowPatch Tune.component' 'AAX/MeowPatch Tune.aaxplugin' 'Standalone/MeowPatch Tune.app'; do
+            test -d "build/MeowPatchTune_artefacts/Release/$bundle"
+            ditto "build/MeowPatchTune_artefacts/Release/$bundle" "$stage/$bundle"
             lipo "$stage/$bundle/Contents/MacOS/MeowPatch Tune" -verify_arch arm64 x86_64
             lipo "$stage/$bundle/Contents/MacOS/libonnxruntime.1.22.0.dylib" -verify_arch arm64 x86_64
           done
