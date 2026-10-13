@@ -118,6 +118,10 @@ jobs:
             ditto "build/MeowPatchTune_artefacts/Release/$bundle" "$stage/$bundle"
             lipo "$stage/$bundle/Contents/MacOS/MeowPatch Tune" -verify_arch arm64 x86_64
             lipo "$stage/$bundle/Contents/MacOS/libonnxruntime.1.22.0.dylib" -verify_arch arm64 x86_64
+            test -f "$stage/$bundle/Contents/Resources/MeowPatch-Licenses/LICENSE.JUCE.md"
+            test -f "$stage/$bundle/Contents/Resources/MeowPatch-Licenses/LICENSE.onnxruntime"
+            test ! -e "$stage/$bundle/Contents/MacOS/MeowPatch-Licenses"
+            codesign --verify --deep --strict "$stage/$bundle"
           done
           printf '%s\n' 'NyaSama Audio - MeowPatch Tune' "Source: $SOURCE_REF" 'Variant: Development' 'Account authorization remains required.' 'Apple/PACE publishing signatures and notarization are not performed by CI.' > "$stage/BUILD-INFO.txt"
           ditto -c -k --sequesterRsrc --keepParent "$stage" "artifacts/$ARTIFACT_NAME.zip"
