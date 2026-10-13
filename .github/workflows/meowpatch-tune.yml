@@ -54,15 +54,6 @@ jobs:
       - name: Verify checked out commit / 核对实际提交
         shell: bash
         run: test "$(git rev-parse HEAD)" = "$SOURCE_REF"
-      - name: Fetch existing licensed AAX SDK / 复用现有私库 AAX SDK
-        uses: actions/checkout@v7.0.1
-        with:
-          repository: mgz0227/Lyrics-Assistant
-          ref: 36841e4e6626ec436841935abf04cfcb4632a15b
-          token: ${{ secrets.TOKEN_MGZ }}
-          persist-credentials: false
-          path: vendor-sdk
-          sparse-checkout: SDK/aax
       - name: Build script prerequisite checks / 构建脚本前置检查
         if: runner.os == 'Windows'
         shell: pwsh
@@ -73,12 +64,12 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $PSNativeCommandUseErrorActionPreference = $true
-          cmake -S . -B build -G 'Visual Studio 17 2022' -A x64 -DMEOW_BUILD_AAX=ON "-DMEOW_AAX_SDK=$pwd/vendor-sdk/SDK/aax" -DMEOW_ENFORCE_INTEGRITY=${{ matrix.integrity }} "-DMEOW_WINDOWS_CERT_SHA256=$env:MEOW_WINDOWS_CERT_SHA256" -DBUILD_TESTING=ON
+          cmake -S . -B build -G 'Visual Studio 17 2022' -A x64 -DMEOW_BUILD_AAX=ON "-DMEOW_AAX_SDK=$pwd/SDK/aax" -DMEOW_ENFORCE_INTEGRITY=${{ matrix.integrity }} "-DMEOW_WINDOWS_CERT_SHA256=$env:MEOW_WINDOWS_CERT_SHA256" -DBUILD_TESTING=ON
       - name: Configure macOS Universal / 配置 macOS 双架构
         if: runner.os == 'macOS'
         shell: bash
         run: |
-          cmake -S . -B build -G Xcode -DCMAKE_OSX_ARCHITECTURES='arm64;x86_64' -DCMAKE_OSX_DEPLOYMENT_TARGET=13.3 -DMEOW_BUILD_AAX=ON "-DMEOW_AAX_SDK=$PWD/vendor-sdk/SDK/aax" -DMEOW_ENFORCE_INTEGRITY=OFF -DBUILD_TESTING=ON
+          cmake -S . -B build -G Xcode -DCMAKE_OSX_ARCHITECTURES='arm64;x86_64' -DCMAKE_OSX_DEPLOYMENT_TARGET=13.3 -DMEOW_BUILD_AAX=ON "-DMEOW_AAX_SDK=$PWD/SDK/aax" -DMEOW_ENFORCE_INTEGRITY=OFF -DBUILD_TESTING=ON
       - name: Build all formats and tests / 编译插件及测试
         run: cmake --build build --config Release --parallel 2
       - name: Native regression tests / 原生回归测试
